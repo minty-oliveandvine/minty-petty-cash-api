@@ -1,0 +1,430 @@
+{
+  "components": {
+    "schemas": {},
+    "securitySchemes": {
+      "PettyCashBearerAuth": {
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "description": "The day's petty cash report for minty-petty-cash-web (the Flask blueprint's paths).",
+    "title": "Minty Petty Cash API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/petty-cash/v1/companies/{entity_id}": {
+      "get": {
+        "operationId": "petty_cash_routes_company_company_context",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Company Context",
+        "tags": [
+          "Company"
+        ]
+      }
+    },
+    "/api/petty-cash/v1/companies/{entity_id}/expense-lines/{line_id}": {
+      "delete": {
+        "operationId": "petty_cash_routes_expenses_delete_expense_line",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "line_id",
+            "required": true,
+            "schema": {
+              "title": "Line Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Delete Expense Line",
+        "tags": [
+          "Expenses"
+        ]
+      }
+    },
+    "/api/petty-cash/v1/companies/{entity_id}/expense-lines/{line_id}/receipts/{attachment_id}": {
+      "get": {
+        "operationId": "petty_cash_routes_expenses_expense_receipt",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "line_id",
+            "required": true,
+            "schema": {
+              "title": "Line Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "attachment_id",
+            "required": true,
+            "schema": {
+              "title": "Attachment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Expense Receipt",
+        "tags": [
+          "Expenses"
+        ]
+      }
+    },
+    "/api/petty-cash/v1/companies/{entity_id}/home": {
+      "get": {
+        "operationId": "petty_cash_routes_home_home",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Home",
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/petty-cash/v1/companies/{entity_id}/reports/cash-count": {
+      "get": {
+        "operationId": "petty_cash_routes_cash_cash_count_page",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Cash Count Page",
+        "tags": [
+          "Cash"
+        ]
+      },
+      "put": {
+        "operationId": "petty_cash_routes_cash_save_cash_count_step",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Save Cash Count Step",
+        "tags": [
+          "Cash"
+        ]
+      }
+    },
+    "/api/petty-cash/v1/companies/{entity_id}/reports/close": {
+      "get": {
+        "operationId": "petty_cash_routes_close_close_page",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Close Page",
+        "tags": [
+          "Close"
+        ]
+      }
+    },
+    "/api/petty-cash/v1/companies/{entity_id}/reports/deposit": {
+      "get": {
+        "operationId": "petty_cash_routes_cash_deposit_page",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Deposit Page",
+        "tags": [
+          "Cash"
+        ]
+      },
+      "put": {
+        "operationId": "petty_cash_routes_cash_save_deposit_step",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Save Deposit Step",
+        "tags": [
+          "Cash"
+        ]
+      }
+    },
+    "/api/petty-cash/v1/companies/{entity_id}/reports/expenses": {
+      "get": {
+        "operationId": "petty_cash_routes_expenses_expenses_page",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Expenses Page",
+        "tags": [
+          "Expenses"
+        ]
+      },
+      "put": {
+        "operationId": "petty_cash_routes_expenses_save_expenses_step_route",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Save Expenses Step Route",
+        "tags": [
+          "Expenses"
+        ]
+      }
+    },
+    "/api/petty-cash/v1/companies/{entity_id}/reports/expenses/lines": {
+      "post": {
+        "operationId": "petty_cash_routes_expenses_add_expense_line",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Add Expense Line",
+        "tags": [
+          "Expenses"
+        ]
+      }
+    },
+    "/api/petty-cash/v1/companies/{entity_id}/reports/opening": {
+      "get": {
+        "operationId": "petty_cash_routes_opening_opening_page",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Opening Page",
+        "tags": [
+          "Opening"
+        ]
+      },
+      "put": {
+        "operationId": "petty_cash_routes_opening_save_opening_step",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Save Opening Step",
+        "tags": [
+          "Opening"
+        ]
+      }
+    },
+    "/api/petty-cash/v1/companies/{entity_id}/reports/sales": {
+      "get": {
+        "operationId": "petty_cash_routes_sales_sales_page",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Sales Page",
+        "tags": [
+          "Sales"
+        ]
+      },
+      "put": {
+        "operationId": "petty_cash_routes_sales_save_sales_step",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Save Sales Step",
+        "tags": [
+          "Sales"
+        ]
+      }
+    },
+    "/api/petty-cash/v1/companies/{entity_id}/reports/submit": {
+      "post": {
+        "operationId": "petty_cash_routes_close_submit_day",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Submit Day",
+        "tags": [
+          "Close"
+        ]
+      }
+    },
+    "/api/petty-cash/v1/companies/{entity_id}/reports/{report_id}/outcome": {
+      "get": {
+        "operationId": "petty_cash_routes_close_report_outcome",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "title": "Report Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Report Outcome",
+        "tags": [
+          "Close"
+        ]
+      }
+    },
+    "/api/petty-cash/v1/companies/{entity_id}/suppliers": {
+      "post": {
+        "description": "``{name}`` -> a new contact in the company's Xero organisation, kept as a synced supplier\n(``services/suppliers.py``).",
+        "operationId": "petty_cash_routes_expenses_add_supplier",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Add Supplier",
+        "tags": [
+          "Expenses"
+        ]
+      }
+    }
+  },
+  "servers": []
+}

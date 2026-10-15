@@ -1,0 +1,23 @@
+# Runtime - Python 3.13 (the Part 3 toolchain, as minty-subscription-api).
+django>=5.2,<6.0
+django-ninja>=1.3,<2.0
+# 2.14 dropped ``pattern`` from the OpenAPI document; pin it so the contract snapshot is stable.
+pydantic>=2.13,<2.14
+django-cors-headers>=4.4,<5.0
+psycopg[binary]>=3.2,<4.0
+PyJWT>=2.8,<3.0
+python-dotenv>=1.0,<2.0
+gunicorn>=23.0,<24.0
+requests>=2.28,<3.0
+# Receipts: B2 through the S3 API, and Flask's downsizing (images with Pillow, PDFs with pikepdf).
+boto3>=1.35,<2.0
+Pillow>=11.0,<12.0
+pikepdf>=9.4,<10.0
+
+# Dev / testing
+pytest>=8.0
+pytest-django>=4.8
+ruff>=0.3
+# The Postgres test mode loads Minty/tests/pg_harness.py, which speaks psycopg2. Test-only:
+# the service itself talks to Postgres through psycopg 3 above.
+psycopg2-binary>=2.9,<3.0

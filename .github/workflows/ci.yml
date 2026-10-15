@@ -1,0 +1,11 @@
+name: CI
+on:
+  push:
+    branches: [main, development]
+  pull_request:
+jobs:
+  check:
+    uses: minty-oliveandvine/.github/.github/workflows/python-api.yml@v1
+    with:
+      python-version: "3.13"
+      schema-name-test: petty_cash/tests/test_schema_name.py

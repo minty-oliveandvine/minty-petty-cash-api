@@ -1,0 +1,16 @@
+# Pinned here (not left to ruff's defaults, which widen with ruff>=0.3 on any run) - the shared
+# CI runs `ruff check .` from the repo root, where python-api.yml has checked Minty out at
+# ./Minty: it is excluded so this repo lints only itself.
+line-length = 100
+target-version = "py313"
+exclude = [".venv", "logs", "Minty"]
+
+[lint]
+select = ["E", "F", "W", "I", "UP"]
+# E501: long docstrings and comments are the house style. UP042: core/policy.py is a verbatim
+# port ((str, Enum)); StrEnum would be a behaviour change to review. "B" is deferred until the
+# ported services are proven at parity with Flask.
+ignore = ["E501", "UP042"]
+
+[lint.isort]
+known-first-party = ["config", "core", "petty_cash", "shared_models"]
