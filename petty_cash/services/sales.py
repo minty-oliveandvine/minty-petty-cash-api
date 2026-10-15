@@ -142,3 +142,20 @@ def save_sales(entity_id, user, draft: Report, amounts: dict, action_type: str) 
         ),
     )
     return draft
+
+
+def report_methods(entity_id, report_id) -> list[dict]:
+    """``page_methods`` for a report already filled in: the methods the company has on, then any
+    method switched off or removed since that still holds an amount on this report (a submitted
+    report keeps what it said). Deliveroo and Cash stay out (Flask's ``report_methods``)."""
+    methods = page_methods(entity_id, report_id)
+    listed = {m["sale_id"] for m in methods}
+    rows = ReportSale.objects.filter(report_id=report_id).values_list("sale_id", "amount")
+    catalogue = {s.id: s for s in SaleInfo.objects.filter(id__in=[sale_id for sale_id, _ in rows])}
+    for sale_id, amount in rows:
+        sale = catalogue.get(sale_id)
+        if sale is None or str(sale_id) in listed or not amount or sale.value_name in (SKIPPED, SaleInfo.CASH_VALUE_NAME):
+            continue
+        methods.append({"sale_id": str(sale_id), "name": sale.sale_name, "value_name": sale.value_name,
+                        "type": str(sale.type), "amount": amount})
+    return methods

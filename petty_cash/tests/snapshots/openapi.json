@@ -35,6 +35,26 @@
         ]
       }
     },
+    "/api/petty-cash/v1/companies/{entity_id}/deposit-correction": {
+      "post": {
+        "operationId": "petty_cash_routes_home_deposit_correction",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Deposit Correction",
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
     "/api/petty-cash/v1/companies/{entity_id}/expense-lines/{line_id}": {
       "delete": {
         "operationId": "petty_cash_routes_expenses_delete_expense_line",
@@ -374,6 +394,64 @@
         ]
       }
     },
+    "/api/petty-cash/v1/companies/{entity_id}/reports/{report_id}": {
+      "delete": {
+        "operationId": "petty_cash_routes_report_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "title": "Report Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Delete",
+        "tags": [
+          "Report"
+        ]
+      },
+      "get": {
+        "operationId": "petty_cash_routes_report_daily_report",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "title": "Report Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Daily Report",
+        "tags": [
+          "Report"
+        ]
+      }
+    },
     "/api/petty-cash/v1/companies/{entity_id}/reports/{report_id}/outcome": {
       "get": {
         "operationId": "petty_cash_routes_close_report_outcome",
@@ -401,6 +479,66 @@
         "summary": "Report Outcome",
         "tags": [
           "Close"
+        ]
+      }
+    },
+    "/api/petty-cash/v1/companies/{entity_id}/reports/{report_id}/reopen": {
+      "post": {
+        "operationId": "petty_cash_routes_report_reopen",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "title": "Report Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Reopen",
+        "tags": [
+          "Report"
+        ]
+      }
+    },
+    "/api/petty-cash/v1/companies/{entity_id}/reports/{report_id}/share-link": {
+      "post": {
+        "operationId": "petty_cash_routes_report_share_link",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "title": "Report Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Share Link",
+        "tags": [
+          "Report"
         ]
       }
     },

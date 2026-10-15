@@ -2,7 +2,7 @@
 
 This service is the Django home of the bearer JSON API minty-petty-cash-web (port 3010) reads and writes a company's petty cash through. Until it took over, the API lived in Flask as the blueprint `blueprints/petty_cash_api/` (Minty branch `petty-cash-api`; its own `docs/features/petty-cash-api.md`). **The paths and the JSON are Flask's, byte for byte**: the web app moves by changing `PETTY_CASH_API_URL` alone (owner, 2026-10-14). Flask stays the only token minter (`/handoff/petty-cash-web`) and the only holder of Xero credentials.
 
-Status (2026-10-15): the door and every step of the report wizard are ported - Opening to Submit and the outcome - each proved by tests and by `scripts/parity.py` against Flask (MATCH on three local companies). Not yet: `POST /deposit-correction` (it posts BankTransfers through Flask's Xero publish engine) and the report actions Flask is gaining (`GET /reports/{id}`, reopen, delete, share link).
+Status (2026-10-15): the door and every step of the report wizard are ported - Opening to Submit and the outcome - each proved by tests and by `scripts/parity.py` against Flask (MATCH on three local companies). On 2026-10-15 minty-petty-cash-web's `development` was walked through a whole day against this service (E2E Petty Cash Shop, 2026-10-14: Opening, Sales, an expense with a receipt, Deposit, a short count with its reason, Ending, Finish) - every call answered here, every page checked at 360, 768 and 1440 px. Every route Flask's Petty Cash API serves is now served here.
 
 ## The door (`core/auth.py`) - fails closed
 
@@ -27,25 +27,27 @@ Every route is under `/api/petty-cash/v1/companies/{entity_id}`. The company com
 |---|---|
 | `GET ""` - the company (`id`, `name`, `role`, `role_label`, `currency {code, decimal_places}` or null) and the person (`id`, `first_name`, `last_name`, `name`, `initials`, `email`) | **ported** (`routes/company.py`) |
 | `GET /home` | **ported** (`routes/home.py`) - "today" is Hong Kong's (Flask used the server's clock) |
-| `POST /deposit-correction` | **not ported** - reverses and re-posts the deposit's Xero BankTransfers and updates Flask's publish record (`legacy.correct_previous_deposit`, `publish.update_xero_deposit_after_change`); the web app keeps calling Flask for it |
+| `POST /deposit-correction` | **forwarded to Flask** (`routes/home.py`, `core/accounts_api.py`; the owner's choice, 2026-10-15) - it can reverse and re-post the deposit's Xero BankTransfers, and this service holds no Xero code. `REPORT_EDIT_ENTITY` is checked here (a refusal never reaches Flask); the body goes to Flask's `POST /api/internal/xero/deposit-correction` under a 60 s assertion (scope `petty-cash-deposit-correction`, the company and the person in the claims), which re-checks both and answers as Flask's Petty Cash API does - that answer is handed back unchanged. No usable answer is 503, a timeout 504, both saying to check the day (the correction may have reached Xero); Flask refusing OUR assertion is a 500, never a 401 that would send the person through the hand-off. Waits up to 125 s (Flask allows 120; gunicorn here 130) |
 | `GET`/`PUT /reports/opening` | **ported** (`routes/opening.py`) |
 | `GET`/`PUT /reports/sales` | **ported** (`routes/sales.py`) |
 | `GET`/`PUT /reports/expenses`, `POST /reports/expenses/lines`, `DELETE /expense-lines/{id}`, `GET /expense-lines/{id}/receipts/{attachment id}` | **ported** (`routes/expenses.py`) - a failed save deletes its upload; a line's receipts leave B2 only after the commit |
 | `POST /suppliers` | **ported** (`routes/expenses.py`, `services/suppliers.py`) - the access token comes from Flask's `POST /api/internal/xero/token` (`core/xero_tokens.py`, a 60 s assertion naming the company); a reconnect-needed connection is 409, the token service down 503 |
 | `GET`/`PUT /reports/deposit`, `GET`/`PUT /reports/cash-count` | **ported** (`routes/cash.py`) - the owner's three cash rules of 2026-10-15 |
 | `GET /reports/close`, `POST /reports/submit`, `GET /reports/{id}/outcome` | **ported** (`routes/close.py`, `services/submit.py`) - from Flask's `5501587`, plus the working-tree change that a resubmitted report is no longer `xero_integrated` |
-| `GET /reports/{id}`, `POST /reports/{id}/reopen`, `DELETE /reports/{id}`, `POST /reports/{id}/share-link` | **to port** once Flask's are committed |
+| `GET /reports/{id}`, `POST /reports/{id}/reopen`, `DELETE /reports/{id}`, `POST /reports/{id}/share-link` | **ported** (`routes/report.py`, `services/report_actions.py`, `services/share.py`; from Flask's `e2eb42e`) - the router is mounted last so `/reports/{id}` never answers for a step. Delete names every table it empties and removes receipts after the commit; the share link is made exactly as Flask makes it and Flask serves it (`ACCOUNTS_API_URL/Minty_Report/...`), with an aware `expires_at` |
 
 Each row's request, answer and refusals are Flask's, as its `docs/features/petty-cash-api.md` lists them; this table is updated as each router lands.
 
 ## What this service writes
 
-The day's report and what hangs off it - `report`, `report_sale`, `report_expense`, `attachment`, `report_expense_attachment`, `report_cash_count`, `report_history` - plus `entity_cash_detail` on submit and a `xero_contact_sync` row for a new supplier. Everything else is read-only (`shared_models/models.py`). Deliberately not copied from Flask: the denomination resolver's write of a company's order onto the shared `cash_info` rows, and `log_history`'s separate commit that swallowed errors.
+The day's report and what hangs off it - `report`, `share_link`, and on delete `xero_report_sync`, `xero_bank_transfer`, `xero_bank_transaction`, `report_sale`, `report_expense`, `attachment`, `report_expense_attachment`, `report_cash_count`, `report_history` - plus `entity_cash_detail` on submit and a `xero_contact_sync` row for a new supplier. Everything else is read-only (`shared_models/models.py`). Deliberately not copied from Flask: the denomination resolver's write of a company's order onto the shared `cash_info` rows, and `log_history`'s separate commit that swallowed errors.
 
 ## Tests
 
 | File | What |
 |---|---|
+| `petty_cash/tests/test_deposit_correction.py` | the forward: the assertion's claims, Flask's answers and refusals handed on, the permission checked here, every no-answer case |
+| `petty_cash/tests/test_report.py` | the Daily Report, reopen, delete (every table it empties, receipts after the commit) and the share link (its token checked the way Flask's public page checks it) |
 | `petty_cash/tests/test_door.py` | every door check and its sentence, CORS and `no-store` on refusals, the preflight, a JSON 404, `/healthz` |
 | `test_home.py`, `test_opening.py`, `test_sales.py`, `test_expenses.py`, `test_cash.py`, `test_close.py`, `test_suppliers.py` | each step's reads, saves and refusals - Flask's `tests/test_petty_cash_api_*.py` and `test_report_*_state.py` expectations restated; `RULE` / `FIXED` tests name each deliberate change from Flask |
 | `petty_cash/tests/test_openapi_snapshot.py` | every path and method, against `snapshots/openapi.json` (`UPDATE_OPENAPI_SNAPSHOT=1` accepts a change - a decision, not a fix) |

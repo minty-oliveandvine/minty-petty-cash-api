@@ -59,7 +59,7 @@ def main() -> int:
     parser.add_argument("--entity", required=True)
     parser.add_argument("--user", required=True)
     parser.add_argument("--day", help="transaction_date for the step reads")
-    parser.add_argument("--report", action="append", default=[], help="a report id whose outcome to compare")
+    parser.add_argument("--report", action="append", default=[], help="a report id whose outcome and Daily Report to compare")
     args = parser.parse_args()
 
     secret = dotenv_values(Path(__file__).resolve().parents[1] / ".env").get("SECRET_KEY")
@@ -72,7 +72,8 @@ def main() -> int:
     if args.day:
         reads += [f"/reports/{step}{query}" for step in ("opening", "sales", "expenses", "deposit", "cash-count",
                                                          "close")]
-    reads += [f"/reports/{report_id}/outcome" for report_id in args.report]
+    for report_id in args.report:
+        reads += [f"/reports/{report_id}/outcome", f"/reports/{report_id}"]
 
     failed = False
     for suffix in reads:

@@ -28,4 +28,6 @@ EXPOSE 8010
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 # Two workers; no in-process jobs here.
 # Shell form so a host-injected PORT is honoured; exec keeps gunicorn as the signalled process.
-CMD exec gunicorn -w 2 -b "0.0.0.0:${PORT:-8010}" config.wsgi:application
+# --timeout 130: a deposit correction waits up to 125 s for Flask (core/accounts_api.py), whose own
+# gunicorn allows 120 s for the Xero calls; the default 30 s would kill the worker mid-correction.
+CMD exec gunicorn -w 2 --timeout 130 -b "0.0.0.0:${PORT:-8010}" config.wsgi:application

@@ -501,3 +501,65 @@ class ReportHistory(models.Model):
     class Meta:
         managed = False
         db_table = "report_history"
+
+
+# ---------------------------------------------------------------------------
+# A report's way to the outside: its share link and Xero's record of it
+# ---------------------------------------------------------------------------
+
+
+class ShareLink(models.Model):
+    """A read-only link to one company-day, served by Flask (``/Minty_Report/<path_segment>/``).
+    One row per company-day; ``path_segment`` ends in a 32-character secret."""
+
+    id = MintyUUIDField(primary_key=True, default=new_id)
+    entity_id = MintyUUIDField()
+    path_segment = models.CharField(max_length=255, unique=True)
+    token = models.TextField()
+    transaction_date = models.DateField()
+    expires_at = models.DateTimeField()
+    created_at = models.DateTimeField(db_default=Now())
+
+    class Meta:
+        managed = False
+        db_table = "share_link"
+
+
+class XeroReportSync(models.Model):
+    """Flask's publish record (``xero/services/publish_record.py``): which Xero objects a report's
+    publish created. Deleted with its report - nothing here writes it."""
+
+    id = MintyUUIDField(primary_key=True, default=new_id)
+    report_id = MintyUUIDField()
+    sync_status = models.CharField(max_length=20, null=True, blank=True)
+    reported_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    xero_response_text = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(db_default=Now())
+    updated_at = models.DateTimeField(db_default=Now())
+
+    class Meta:
+        managed = False
+        db_table = "xero_report_sync"
+
+
+class XeroBankTransfer(models.Model):
+    """DELETE-ONLY mirror (only the columns a report's delete names): a deposit Xero recorded."""
+
+    id = MintyUUIDField(primary_key=True, default=new_id)
+    sync_report_id = MintyUUIDField()
+
+    class Meta:
+        managed = False
+        db_table = "xero_bank_transfer"
+
+
+class XeroBankTransaction(models.Model):
+    """DELETE-ONLY mirror (only the columns a report's delete names): an expense Xero recorded."""
+
+    id = MintyUUIDField(primary_key=True, default=new_id)
+    sync_report_id = MintyUUIDField(null=True, blank=True)
+
+    class Meta:
+        managed = False
+        db_table = "xero_bank_transaction"

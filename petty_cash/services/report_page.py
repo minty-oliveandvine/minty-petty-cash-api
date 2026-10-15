@@ -5,6 +5,8 @@ count, and the audit line (who submitted, when, Xero). Read-only."""
 from __future__ import annotations
 
 from petty_cash.days import hk
+from petty_cash.money import cents
+from petty_cash.services.reports import actual_cash_total
 from shared_models.models import (
     Attachment,
     Report,
@@ -52,3 +54,26 @@ def report_facts(report: Report) -> dict:
         "published_at": hk(report.published_at),
         "publishing_status": str(report.publishing_status) if report.publishing_status else None,
     }
+
+
+def report_status(report: Report) -> tuple[str, str]:
+    """The Status pill, ``(label, tone)`` - Flask's ``daily_closing.report_status``. "Published" is
+    ``xero_integrated``: an edit after publishing clears it and the report reads Submitted again."""
+    if str(report.status or "submitted") == "draft":
+        return "Draft", "neutral"
+    if report.xero_integrated:
+        return "Published to Xero", "success"
+    if report.publishing_status == "failed":
+        return "Publish failed", "danger"
+    if report.publishing_status == "publishing":
+        return "Publishing to Xero", "info"
+    return "Submitted", "info"
+
+
+def cash_summary(report: Report):
+    """``(counted, counted + safebox)``, both None when the report was never counted (Flask's
+    ``cash_denominations.cash_summary``)."""
+    total = actual_cash_total(report)
+    if total is None:
+        return None, None
+    return total, total + cents(report.safe_box_balance)

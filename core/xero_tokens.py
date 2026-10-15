@@ -12,11 +12,11 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
 
-import jwt
 import requests
 from django.conf import settings
+
+from core.accounts_api import service_assertion
 
 logger = logging.getLogger("petty-cash-api")
 
@@ -39,12 +39,7 @@ class XeroToken:
 
 
 def xero_token(entity_id) -> XeroToken:
-    now = datetime.now(UTC)
-    assertion = jwt.encode(
-        {"scope": SCOPE, "entity_id": str(entity_id), "iat": now, "exp": now + timedelta(seconds=60)},
-        settings.SECRET_KEY,
-        algorithm="HS256",
-    )
+    assertion = service_assertion(SCOPE, entity_id)
     url = f"{settings.ACCOUNTS_API_URL}/api/internal/xero/token"
     try:
         resp = requests.post(url, headers={"Authorization": f"Bearer {assertion}"}, timeout=settings.XERO_TOKEN_TIMEOUT)

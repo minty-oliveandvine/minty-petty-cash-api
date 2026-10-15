@@ -1,18 +1,31 @@
-"""``GET /home`` - the Petty Cash dashboard's reads (Flask's ``petty_cash_api/routes/home.py``):
-everything the page computes (``petty_cash/services/dashboard.py``) plus what this person may do
-there. ``POST /deposit-correction`` (it can reverse a deposit in Xero) comes with the Xero routes.
+"""The Petty Cash dashboard - Flask's ``petty_cash_api/routes/home.py``.
+
+- ``GET /home``: everything the page computes (``petty_cash/services/dashboard.py``) plus what this
+  person may do there.
+- ``POST /deposit-correction`` ``{kind, date, amount}``: the "Before You Start" correction of the
+  previous day's bank deposit. It can reverse and re-post the deposit in Xero, so Flask does it
+  (``core/accounts_api.py``, the owner's choice of 2026-10-15): this route asks
+  ``REPORT_EDIT_ENTITY`` itself, then hands the body to Flask's internal route and Flask's answer -
+  the Petty Cash API's own JSON, refusals included - back unchanged. Flask checks the person and the
+  body again.
 """
 
 from __future__ import annotations
 
+from django.http import JsonResponse
 from ninja import Router
 
+from core.accounts_api import forward_deposit_correction
+from core.exceptions import Refused
 from core.policy import Permission, has_permission, is_superuser_readonly
 from petty_cash.days import iso
 from petty_cash.money import out
+from petty_cash.routes._input import json_body
 from petty_cash.services.dashboard import dashboard_state, member_count
 
 router = Router()
+
+NOT_ALLOWED = "You don't have permission to change this company's reports."
 
 
 def home_payload(entity_id: str, person) -> dict:
@@ -70,3 +83,12 @@ def home_payload(entity_id: str, person) -> dict:
 @router.get("/home")
 def home(request):
     return home_payload(request.company.id, request.auth_user)
+
+
+@router.post("/deposit-correction")
+def deposit_correction(request):
+    entity_id = request.company.id
+    if not has_permission(request.auth_user, Permission.REPORT_EDIT_ENTITY, entity_id):
+        raise Refused(NOT_ALLOWED, 403)
+    answer, status = forward_deposit_correction(entity_id, request.auth_user.id, json_body(request))
+    return JsonResponse(answer, status=status)
