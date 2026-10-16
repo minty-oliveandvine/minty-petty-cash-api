@@ -17,6 +17,7 @@ import mimetypes
 import os
 from decimal import Decimal
 
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Exists, OuterRef
 from django.db.models.functions import Lower
@@ -45,6 +46,21 @@ class ExpenseRefused(Exception):
     def __init__(self, message: str):
         super().__init__(message)
         self.message = message
+
+
+def checked_receipt(upload) -> tuple[bytes, str, str]:
+    """One uploaded receipt checked as the Expenses step takes it (Flask's ``checked_receipt``, shared
+    with the Daily Report's line edit): ``(bytes, mime judged by the bytes, original name)``, or
+    ``ExpenseRefused`` with the sentence."""
+    if upload.size == 0:
+        raise ExpenseRefused("That file is empty. Attach the receipt again.")
+    if upload.size > settings.MAX_RECEIPT_BYTES:
+        raise ExpenseRefused("Attach a file of 10 MB or less.")
+    data = upload.read()
+    mime = storage.sniff_mime(data[:16])
+    if mime is None:
+        raise ExpenseRefused("Attach a PDF, JPEG or PNG file.")
+    return data, mime, upload.name
 
 
 def suppliers(entity_id):

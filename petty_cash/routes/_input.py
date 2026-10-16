@@ -60,3 +60,17 @@ def amount(value, *, allow_zero=True) -> Decimal | None:
 def action_type(body: dict) -> str | None:
     """``action: "next" | "exit"`` as the services' ``save_next`` / ``save_exit``."""
     return {"next": "save_next", "exit": "save_exit"}.get(body.get("action"))
+
+
+def form_and_files(request):
+    """The form fields and files of a PUT or PATCH, as Flask's ``request.form`` / ``request.files``
+    read them for any method (Django parses a form body only for POST)."""
+    if request.method == "POST":
+        return request.POST, request.FILES
+    method = request.method
+    request.method = "POST"
+    try:
+        request._load_post_and_files()
+    finally:
+        request.method = method
+    return request._post, request._files

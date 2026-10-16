@@ -81,7 +81,8 @@ def test_the_daily_report_brings_the_day_and_what_may_be_done(client, shop, note
     assert body["cash"]["difference"] == {"amount": 0, "kind": "none", "reason": ""}
     assert body["closing_balance"] == 55 and body["submitted_at"].endswith("+08:00")
     assert body["submitted_by"] == "Olive Owner" and body["company_name"] == "Acme Shop"
-    assert body["permissions"] == {"edit": True, "delete": True, "publish": True, "share": True}
+    assert body["permissions"] == {"edit": True, "delete": True, "publish": True, "share": True, "edit_details": True}
+    assert body["options"] == {"suppliers": [], "accounts": []}
 
 
 def test_the_steps_are_not_taken_for_a_report_id(client, shop, notes):

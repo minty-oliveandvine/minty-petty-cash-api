@@ -472,6 +472,76 @@
         ]
       }
     },
+    "/api/petty-cash/v1/companies/{entity_id}/reports/{report_id}/difference-reason": {
+      "put": {
+        "operationId": "petty_cash_routes_report_edit_reason",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "title": "Report Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Edit Reason",
+        "tags": [
+          "Report"
+        ]
+      }
+    },
+    "/api/petty-cash/v1/companies/{entity_id}/reports/{report_id}/expense-lines/{line_id}": {
+      "patch": {
+        "description": "multipart: ``remarks``, ``supplier_id``, ``account_id`` (each only when it changes) and one\n``receipt`` that replaces the line's.",
+        "operationId": "petty_cash_routes_report_edit_report_line",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "title": "Report Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "line_id",
+            "required": true,
+            "schema": {
+              "title": "Line Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Edit Report Line",
+        "tags": [
+          "Report"
+        ]
+      }
+    },
     "/api/petty-cash/v1/companies/{entity_id}/reports/{report_id}/outcome": {
       "get": {
         "operationId": "petty_cash_routes_close_report_outcome",
@@ -557,6 +627,36 @@
           }
         ],
         "summary": "Share Link",
+        "tags": [
+          "Report"
+        ]
+      }
+    },
+    "/api/petty-cash/v1/companies/{entity_id}/reports/{report_id}/withdrawal": {
+      "put": {
+        "operationId": "petty_cash_routes_report_edit_report_withdrawal",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "title": "Report Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Edit Report Withdrawal",
         "tags": [
           "Report"
         ]

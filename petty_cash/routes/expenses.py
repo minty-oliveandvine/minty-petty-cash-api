@@ -33,6 +33,7 @@ from petty_cash.routes._input import BAD_DATE, action_type, json_body, query_day
 from petty_cash.services.expenses import (
     ExpenseRefused,
     add_expense,
+    checked_receipt,
     delete_expense,
     expense_accounts,
     lines,
@@ -139,16 +140,10 @@ def _receipt(request) -> tuple[bytes, str, str]:
         raise Refused("Attach the receipt to add this expense.", 422)
     if len(files) > 1:
         raise Refused("Attach one receipt per expense.", 422)
-    upload = files[0]
-    if upload.size == 0:
-        raise Refused("That file is empty. Attach the receipt again.", 422)
-    if upload.size > settings.MAX_RECEIPT_BYTES:
-        raise Refused("Attach a file of 10 MB or less.", 422)
-    data = upload.read()
-    mime = sniff_mime(data[:16])
-    if mime is None:
-        raise Refused("Attach a PDF, JPEG or PNG file.", 422)
-    return data, mime, upload.name
+    try:
+        return checked_receipt(files[0])
+    except ExpenseRefused as refused:
+        raise Refused(refused.message, 422) from None
 
 
 @router.post("/reports/expenses/lines")
