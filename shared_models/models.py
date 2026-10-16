@@ -78,6 +78,9 @@ class Entity(models.Model):
     name = models.CharField(max_length=100)
     country_code = CharNField(max_length=2, null=True, blank=True)
     currency_id = MintyUUIDField(null=True, blank=True)
+    #: The currency's symbol, written with ``currency_id`` by the settings' country save (Flask's
+    #: ``apply_country_currency_selection``); nothing reads it.
+    currency_format = models.CharField(max_length=30, null=True, blank=True)
     xero_org_id = models.CharField(max_length=36, null=True, blank=True)
     status = PgEnumField("entity_status", choices=EntityStatus.choices, default=EntityStatus.ONBOARDING)
     connected_by_user_id = MintyUUIDField(null=True, blank=True)
@@ -259,8 +262,9 @@ class EntityPettycashSettings(models.Model):
 
 
 class SaleInfo(models.Model):
-    """Read-only. The global sales-method catalogue. Cash is the ``other`` row whose
-    ``value_name`` is ``cash_sales``."""
+    """The global sales-method catalogue, shared by every company. Cash is the ``other`` row whose
+    ``value_name`` is ``cash_sales``. Written only when Settings adds a method nobody has yet, or
+    renames one no other company uses (``services/settings.py``)."""
 
     CASH_VALUE_NAME = "cash_sales"
 
@@ -279,7 +283,7 @@ class SaleInfo(models.Model):
 
 
 class EntitySaleSetting(models.Model):
-    """Read-only. The company's link to a catalogue method: on/off and its order."""
+    """The company's link to a catalogue method: on/off and its order (written by Settings)."""
 
     pk = models.CompositePrimaryKey("entity_id", "sale_id")
     entity_id = MintyUUIDField()
@@ -311,7 +315,8 @@ class CashInfo(models.Model):
 
 
 class EntityCashSetting(models.Model):
-    """Read-only. A company's own on/off and order for a denomination."""
+    """A company's own on/off and order for a denomination. Rebuilt for the new currency by the
+    settings' country save (``services/settings.py::sync_cash_settings``)."""
 
     pk = models.CompositePrimaryKey("entity_id", "cash_id")
     entity_id = MintyUUIDField()

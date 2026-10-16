@@ -562,6 +562,144 @@
         ]
       }
     },
+    "/api/petty-cash/v1/companies/{entity_id}/sales-methods": {
+      "post": {
+        "operationId": "petty_cash_routes_settings_add_sales_method",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Add Sales Method",
+        "tags": [
+          "Settings"
+        ]
+      }
+    },
+    "/api/petty-cash/v1/companies/{entity_id}/sales-methods/order": {
+      "put": {
+        "operationId": "petty_cash_routes_settings_reorder_sales_methods",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Reorder Sales Methods",
+        "tags": [
+          "Settings"
+        ]
+      }
+    },
+    "/api/petty-cash/v1/companies/{entity_id}/sales-methods/{method_id}": {
+      "delete": {
+        "operationId": "petty_cash_routes_settings_remove_sales_method",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "method_id",
+            "required": true,
+            "schema": {
+              "title": "Method Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Remove Sales Method",
+        "tags": [
+          "Settings"
+        ]
+      },
+      "put": {
+        "operationId": "petty_cash_routes_settings_rename_sales_method",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "method_id",
+            "required": true,
+            "schema": {
+              "title": "Method Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Rename Sales Method",
+        "tags": [
+          "Settings"
+        ]
+      }
+    },
+    "/api/petty-cash/v1/companies/{entity_id}/settings": {
+      "get": {
+        "operationId": "petty_cash_routes_settings_settings_page",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Settings Page",
+        "tags": [
+          "Settings"
+        ]
+      }
+    },
+    "/api/petty-cash/v1/companies/{entity_id}/settings/country": {
+      "put": {
+        "operationId": "petty_cash_routes_settings_save_country",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Save Country",
+        "tags": [
+          "Settings"
+        ]
+      }
+    },
     "/api/petty-cash/v1/companies/{entity_id}/suppliers": {
       "post": {
         "description": "``{name}`` -> a new contact in the company's Xero organisation, kept as a synced supplier\n(``services/suppliers.py``).",

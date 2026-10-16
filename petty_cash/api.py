@@ -2,7 +2,18 @@
 mounted under ``/companies/{entity_id}`` (``config/urls.py``); the door (``core/auth.py``) reads
 the company from that address."""
 
-from petty_cash.routes import cash, close, company, expenses, history, home, opening, report, sales
+from petty_cash.routes import (
+    cash,
+    close,
+    company,
+    expenses,
+    history,
+    home,
+    opening,
+    report,
+    sales,
+    settings,
+)
 
 COMPANY = "/companies/{entity_id}"
 
@@ -15,6 +26,7 @@ routers = [
     (COMPANY, cash.router, "Cash"),
     (COMPANY, close.router, "Close"),
     (COMPANY, history.router, "History"),
+    (COMPANY, settings.router, "Settings"),
     # LAST: /reports/{report_id} must not answer for /reports/opening and the other steps.
     (COMPANY, report.router, "Report"),
 ]
