@@ -6,6 +6,8 @@ assertion signed with the shared ``SECRET_KEY`` whose claims - never the body - 
 - ``forward_deposit_correction``: ``POST /api/internal/xero/deposit-correction`` - the dashboard's
   deposit correction, which can reverse and re-post the deposit in Xero, done by Flask (the owner's
   choice, 2026-10-15: this service holds no Xero code or credentials).
+- ``publish_reasons``: ``POST /api/internal/xero/publish-reasons`` - why the history page's failed
+  reports didn't publish (the owner's choice, 2026-10-16).
 """
 
 from __future__ import annotations
@@ -61,3 +63,33 @@ def forward_deposit_correction(entity_id, user_id, body) -> tuple[dict, int]:
         logger.error("Deposit correction: Flask refused this service's assertion for company %s", entity_id)
         return {"error": "Something went wrong on our side. Please try again."}, 500
     return answer, resp.status_code
+
+
+PUBLISH_REASONS_SCOPE = "petty-cash-publish-reasons"
+PUBLISH_REASONS_TIMEOUT = (5, 60)
+
+
+class PublishReasonsUnavailable(Exception):
+    """Flask could not say why the failed reports didn't publish."""
+
+
+def publish_reasons(entity_id, report_ids) -> dict[str, list[dict]]:
+    """``{report id: [{text, resolved}]}`` from Flask's ``POST /api/internal/xero/publish-reasons``
+    (the history page's own reasons; working out "resolved" may ask Xero). Raises
+    ``PublishReasonsUnavailable`` rather than answer with no reasons - an empty list would read as
+    "nothing to fix"."""
+    assertion = service_assertion(PUBLISH_REASONS_SCOPE, entity_id)
+    url = f"{settings.ACCOUNTS_API_URL}/api/internal/xero/publish-reasons"
+    try:
+        resp = requests.post(url, json={"report_ids": [str(i) for i in report_ids]},
+                             headers={"Authorization": f"Bearer {assertion}"}, timeout=PUBLISH_REASONS_TIMEOUT)
+        body = resp.json() if resp.status_code == 200 else None
+    except (requests.RequestException, ValueError) as exc:
+        logger.error("Publish reasons: no answer from Flask for company %s: %s", entity_id, exc)
+        raise PublishReasonsUnavailable from None
+    reasons = body.get("reasons") if isinstance(body, dict) else None
+    if not isinstance(reasons, dict):
+        logger.error("Publish reasons: Flask answered %s for company %s: %s", resp.status_code, entity_id,
+                     (resp.text or "")[:200])
+        raise PublishReasonsUnavailable
+    return reasons

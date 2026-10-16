@@ -34,6 +34,7 @@ Every route is under `/api/petty-cash/v1/companies/{entity_id}`. The company com
 | `POST /suppliers` | **ported** (`routes/expenses.py`, `services/suppliers.py`) - the access token comes from Flask's `POST /api/internal/xero/token` (`core/xero_tokens.py`, a 60 s assertion naming the company); a reconnect-needed connection is 409, the token service down 503 |
 | `GET`/`PUT /reports/deposit`, `GET`/`PUT /reports/cash-count` | **ported** (`routes/cash.py`) - the owner's three cash rules of 2026-10-15 |
 | `GET /reports/close`, `POST /reports/submit`, `GET /reports/{id}/outcome` | **ported** (`routes/close.py`, `services/submit.py`) - from Flask's `5501587`, plus the working-tree change that a resubmitted report is no longer `xero_integrated` |
+| `GET /reports?status=&start_date=&end_date=&page=&per_page=` | **ported** (`routes/history.py`, `services/history.py`; from Flask's `cbebb91`) - filtered (the Status pills as SQL), counted and paged in SQL. A failed report's publish reasons come from Flask's `POST /api/internal/xero/publish-reasons` (`core/accounts_api.py::publish_reasons`; the owner's choice, 2026-10-16 - working out "resolved" may ask Xero), asked only for the failed rows on the page; if Flask can't give them the page is a 503, never failed rows shown with no reasons |
 | `GET /reports/{id}`, `POST /reports/{id}/reopen`, `DELETE /reports/{id}`, `POST /reports/{id}/share-link` | **ported** (`routes/report.py`, `services/report_actions.py`, `services/share.py`; from Flask's `e2eb42e`) - the router is mounted last so `/reports/{id}` never answers for a step. Delete names every table it empties and removes receipts after the commit; the share link is made exactly as Flask makes it and Flask serves it (`ACCOUNTS_API_URL/Minty_Report/...`), with an aware `expires_at` |
 
 Each row's request, answer and refusals are Flask's, as its `docs/features/petty-cash-api.md` lists them; this table is updated as each router lands.
@@ -47,6 +48,7 @@ The day's report and what hangs off it - `report`, `share_link`, and on delete `
 | File | What |
 |---|---|
 | `petty_cash/tests/test_deposit_correction.py` | the forward: the assertion's claims, Flask's answers and refusals handed on, the permission checked here, every no-answer case |
+| `petty_cash/tests/test_history.py` | the list, every status filter, paging, each refused filter, and the reasons hand-off (asked only for failed rows; a 503 when Flask can't answer) |
 | `petty_cash/tests/test_report.py` | the Daily Report, reopen, delete (every table it empties, receipts after the commit) and the share link (its token checked the way Flask's public page checks it) |
 | `petty_cash/tests/test_door.py` | every door check and its sentence, CORS and `no-store` on refusals, the preflight, a JSON 404, `/healthz` |
 | `test_home.py`, `test_opening.py`, `test_sales.py`, `test_expenses.py`, `test_cash.py`, `test_close.py`, `test_suppliers.py` | each step's reads, saves and refusals - Flask's `tests/test_petty_cash_api_*.py` and `test_report_*_state.py` expectations restated; `RULE` / `FIXED` tests name each deliberate change from Flask |

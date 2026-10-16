@@ -68,7 +68,7 @@ def main() -> int:
         return 2
     auth = {"Authorization": f"Bearer {_token(secret, args.user)}"}
     query = f"?transaction_date={args.day}" if args.day else ""
-    reads = ["", "/home"]
+    reads = ["", "/home", "/reports", "/reports?per_page=25&page=2", "/reports?status=failed"]
     if args.day:
         reads += [f"/reports/{step}{query}" for step in ("opening", "sales", "expenses", "deposit", "cash-count",
                                                          "close")]

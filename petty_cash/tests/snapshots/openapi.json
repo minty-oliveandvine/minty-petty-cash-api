@@ -144,6 +144,26 @@
         ]
       }
     },
+    "/api/petty-cash/v1/companies/{entity_id}/reports": {
+      "get": {
+        "operationId": "petty_cash_routes_history_history",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "History",
+        "tags": [
+          "History"
+        ]
+      }
+    },
     "/api/petty-cash/v1/companies/{entity_id}/reports/cash-count": {
       "get": {
         "operationId": "petty_cash_routes_cash_cash_count_page",
