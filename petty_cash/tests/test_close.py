@@ -322,6 +322,17 @@ def test_the_outcome_says_what_was_counted_and_what_happens_next(client, shop, n
     assert body["can_publish"] is True
 
 
+def test_the_outcomes_totals_are_the_daily_reports_kpis(client, shop, notes):
+    report = _ready(shop, notes, total_sales=80)
+    _submit(client, shop)
+
+    body = _outcome(client, shop, report.id).json()
+    kpis = client.get(url(shop.entity.id, f"/reports/{report.id}"), headers=headers(shop.owner.id)).json()["kpis"]
+
+    assert (body["total_sales"], body["total_expenses"]) == (kpis["total_sales"], kpis["total_expenses"])
+    assert (body["total_sales"], body["total_expenses"]) == (80, 15)
+
+
 def test_the_outcome_of_another_companys_or_an_unknown_report_is_404(client, shop, notes):
     other = make_entity(shop.owner, name="Other Shop")
     theirs = make_report(other, D3, created_by=shop.owner.id)

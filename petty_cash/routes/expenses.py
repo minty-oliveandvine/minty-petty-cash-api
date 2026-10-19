@@ -7,6 +7,11 @@
   maximum, a supplier and an account from the lists above, a description of at most 300
   characters, one PDF / JPEG / PNG of at most 10 MB judged by its bytes.
 - ``DELETE /expense-lines/{id}``: a line of this company's draft.
+- ``PATCH /expense-lines/{id}`` (multipart): change that line - amount, description, supplier,
+  account, its receipt replaced or some receipts removed - checked as adding is
+  (``services/expenses.py::update_expense``, Flask's ``update_expense``).
+- ``POST /reports/expenses/extract`` (multipart ``receipt``): the model's suggestions for a line,
+  read by Flask (``core/accounts_api.py::forward_expense_extract``) - nothing is written.
 - ``GET /expense-lines/{id}/receipts/{attachment id}``: the receipt's bytes - by id, never by key.
 - ``PUT /reports/expenses`` ``{transaction_date, action}``: the step's Save & Next / Save & Exit.
 - ``POST /suppliers`` ``{name}``: a new supplier, created in the company's Xero organisation
@@ -24,13 +29,23 @@ from django.conf import settings
 from django.http import HttpResponse, JsonResponse
 from ninja import Router
 
+from core.accounts_api import forward_expense_extract
 from core.exceptions import Refused
 from core.policy import Permission, can_delete_report, can_view_report, has_permission
 from petty_cash.days import parse_day
 from petty_cash.files.storage import read_receipt, sniff_mime
 from petty_cash.money import MAX_AMOUNT, cents, out
-from petty_cash.routes._input import BAD_DATE, action_type, json_body, query_day, require_edit
+from petty_cash.routes._input import (
+    BAD_DATE,
+    action_type,
+    form_and_files,
+    json_body,
+    query_day,
+    require_edit,
+)
 from petty_cash.services.expenses import (
+    KEEP_A_RECEIPT,
+    NOT_A_DRAFT,
     ExpenseRefused,
     add_expense,
     checked_receipt,
@@ -39,10 +54,12 @@ from petty_cash.services.expenses import (
     lines,
     save_expenses_step,
     suppliers,
+    update_expense,
 )
 from petty_cash.services.reports import currency_code, draft_payload, find_draft, progress_payload
 from petty_cash.services.suppliers import MAX_NAME as MAX_SUPPLIER_NAME
 from petty_cash.services.suppliers import SupplierRefused, create_supplier
+from shared_models.enums import ReportStatus
 from shared_models.models import (
     AccountInfo,
     Attachment,
@@ -206,6 +223,64 @@ def delete_expense_line(request, line_id: str):
     return {"total": out(total)}
 
 
+@router.patch("/expense-lines/{line_id}")
+def edit_expense_line(request, line_id: str):
+    """A line of this company's DRAFT, in place - multipart, each field only when it changes:
+    ``amount``, ``remarks``, ``supplier_id``, ``account_id``, one ``receipt`` that replaces the line's
+    receipts, ``remove_receipt_ids`` (repeatable) dropping some. Checked as adding is; a submitted
+    report's line is ``PATCH /reports/{id}/expense-lines/{id}``'s, so here it is a 409."""
+    line, report = _company_line(request.company.id, line_id)
+    if line is None:
+        raise Refused(NOT_FOUND, 404)
+    require_edit(request)
+    if report.status != ReportStatus.DRAFT:
+        raise Refused(NOT_A_DRAFT, 409)
+    entity_id = request.company.id
+    form, files = form_and_files(request)
+
+    amount = line.amount
+    if "amount" in form:
+        amount = _amount(form.get("amount"))
+        if amount is None:
+            raise Refused(f"Enter the amount as a number above 0 and up to {MAX_AMOUNT:,.2f}.", 422)
+    remarks = line.remarks or ""
+    if "remarks" in form:
+        remarks = (form.get("remarks") or "").strip()
+        if len(remarks) > MAX_REMARKS:
+            raise Refused(f"Keep the description to {MAX_REMARKS} characters or fewer.", 422)
+    supplier = account = None
+    if form.get("supplier_id"):
+        supplier = suppliers(entity_id).filter(xero_contact_id=form.get("supplier_id")).first()
+        if supplier is None:
+            raise Refused("Choose a supplier from the list.", 422)
+    if form.get("account_id"):
+        account = expense_accounts(entity_id).filter(xero_account_id=form.get("account_id")).first()
+        if account is None:
+            raise Refused("Choose an account code from the list.", 422)
+    uploads = [f for f in files.getlist("receipt") if f and (f.name or "").strip()]
+    if len(uploads) > 1:
+        raise Refused("Attach one receipt per expense.", 422)
+    receipt = None
+    if uploads:
+        try:
+            receipt = checked_receipt(uploads[0])
+        except ExpenseRefused as refused:
+            raise Refused(refused.message, 422) from None
+    remove = [str(i).strip() for i in form.getlist("remove_receipt_ids") if str(i).strip()]
+    held = {str(i) for i in ReportExpenseAttachment.objects.filter(report_expense_id=line.id)
+            .values_list("attachment_id", flat=True)}
+    if any(i not in held for i in remove):
+        raise Refused("That receipt isn't on this expense. Reload the expenses and try again.", 422)
+    if receipt is None and held and held <= set(remove):
+        raise Refused(KEEP_A_RECEIPT, 422)
+
+    try:
+        line = update_expense(report, line, request.auth_user, amount=amount, remarks=remarks, supplier=supplier,
+                              account=account, receipt=receipt, remove_receipt_ids=remove)
+    except ExpenseRefused as refused:
+        raise Refused(refused.message, 409) from None
+    return {"line": lines_payload([line])[0], "total": out(report.expense_total)}
+
 @router.get("/expense-lines/{line_id}/receipts/{attachment_id}")
 def expense_receipt(request, line_id: str, attachment_id: str):
     line, report = _company_line(request.company.id, line_id)
@@ -228,6 +303,25 @@ def expense_receipt(request, line_id: str, attachment_id: str):
     resp["X-Content-Type-Options"] = "nosniff"
     return resp
 
+
+@router.post("/reports/expenses/extract")
+def extract_expense(request):
+    """Multipart ``receipt`` -> the model's suggestions for a line, read by Flask (this service holds
+    no model code; ``core/accounts_api.py::forward_expense_extract``). Who may ask (403) and the file
+    (422) are checked here first, with Flask's sentences, so a refusal never leaves this service;
+    Flask checks both again. Every other outcome is 200 ``{suggestions, reason}``."""
+    require_edit(request)
+    uploads = [f for f in request.FILES.getlist("receipt") if f and (f.name or "").strip()]
+    if not uploads:
+        raise Refused("Attach the receipt to read it.", 422)
+    if len(uploads) > 1:
+        raise Refused("Attach one receipt at a time.", 422)
+    try:
+        data, mime, name = checked_receipt(uploads[0])
+    except ExpenseRefused as refused:
+        raise Refused(refused.message, 422) from None
+    answer, status = forward_expense_extract(request.company.id, request.auth_user.id, data, mime, name)
+    return JsonResponse(answer, status=status)
 
 @router.put("/reports/expenses")
 def save_expenses_step_route(request):

@@ -12,6 +12,9 @@ assertion signed with the shared ``SECRET_KEY`` whose claims - never the body - 
   same choice: the publish asks Xero and starts Flask's background worker).
 - ``forward_xero_settings``: ``POST /api/internal/xero/petty-cash-settings`` - Petty Cash
   Settings' Xero cards (the same choice: each checks the connection live and refreshes from Xero).
+- ``forward_expense_extract``: ``POST /api/internal/petty-cash/expense-extract`` - a receipt read
+  by the model (2026-10-19: this service holds no model code either; Flask's
+  ``services/expense_ai.py`` stays the only module that talks to the model).
 """
 
 from __future__ import annotations
@@ -136,3 +139,50 @@ def publish_reasons(entity_id, report_ids) -> dict[str, list[dict]]:
                      (resp.text or "")[:200])
         raise PublishReasonsUnavailable
     return reasons
+
+
+EXPENSE_EXTRACT_SCOPE = "petty-cash-expense-extract"
+#: The model is given 25 s (Flask's ``EXPENSE_AI_TIMEOUT_S``) and may retry once on a rate limit or a
+#: server error; past this the person types the line themselves.
+EXPENSE_EXTRACT_TIMEOUT = (5, 60)
+#: ``services/expense_ai.py``'s reason codes for a call that never got a usable answer.
+REASON_TIMEOUT = "timeout"
+REASON_PROVIDER_ERROR = "provider_error"
+
+
+def forward_expense_extract(entity_id, user_id, receipt: bytes, mime: str, name: str) -> tuple[dict, int]:
+    """A checked receipt read by the model, done by Flask (``POST /api/internal/petty-cash/
+    expense-extract``; ``services/expense_ai.py`` there is the only module that talks to the model):
+    multipart ``receipt`` under a 60 s assertion naming the company and the person. Flask's answer
+    is the Petty Cash API's own - 200 ``{suggestions, reason}``, or a refusal ``{error}`` - handed on
+    unchanged. As every failure of the reader is silent, no usable answer is 200 ``{suggestions:
+    null, reason: "timeout" | "provider_error"}`` (logged), never an error the person must act on;
+    Flask refusing OUR assertion is a 500, as for every forward."""
+    assertion = service_assertion(EXPENSE_EXTRACT_SCOPE, entity_id, user_id=str(user_id))
+    url = f"{settings.ACCOUNTS_API_URL}/api/internal/petty-cash/expense-extract"
+    try:
+        resp = requests.post(url, files={"receipt": (name or "receipt", receipt, mime)},
+                             headers={"Authorization": f"Bearer {assertion}"}, timeout=EXPENSE_EXTRACT_TIMEOUT)
+    except requests.Timeout:
+        logger.error("Expense extract: Flask did not answer in time for company %s", entity_id)
+        return {"suggestions": None, "reason": REASON_TIMEOUT}, 200
+    except requests.RequestException as exc:
+        logger.error("Expense extract: no answer from Flask for company %s: %s", entity_id, exc)
+        return {"suggestions": None, "reason": REASON_PROVIDER_ERROR}, 200
+    try:
+        answer = resp.json()
+    except ValueError:
+        answer = None
+    if resp.status_code == 401:
+        # Our own assertion was refused: a SECRET_KEY that differs between the two services.
+        logger.error("Expense extract: Flask refused this service's assertion for company %s", entity_id)
+        return {"error": "Something went wrong on our side. Please try again."}, 500
+    usable = isinstance(answer, dict) and (
+        "error" in answer if resp.status_code >= 400
+        else resp.status_code == 200 and "suggestions" in answer and "reason" in answer
+    )
+    if not usable:
+        logger.error("Expense extract: Flask answered %s without the API's JSON for company %s",
+                     resp.status_code, entity_id)
+        return {"suggestions": None, "reason": REASON_PROVIDER_ERROR}, 200
+    return answer, resp.status_code

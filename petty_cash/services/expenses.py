@@ -149,6 +149,111 @@ def add_expense(report: Report, user, *, amount: Decimal, remarks: str, supplier
     return line
 
 
+def _drop_orphans(row_id, old_ids, keep_keys=()) -> None:
+    """After a line's links changed (inside ``transaction.atomic``): the ``attachment`` rows of
+    ``old_ids`` no link uses any more are deleted, and their files leave the bucket after the
+    commit (a failed change keeps the old receipt AND its file)."""
+    orphans = list(
+        Attachment.objects.filter(id__in=old_ids).exclude(file_path__in=list(keep_keys))
+        .exclude(id__in=ReportExpenseAttachment.objects.filter(attachment_id__in=old_ids).values("attachment_id"))
+    )
+    replaced = [a.file_path for a in orphans if a.file_path]
+    Attachment.objects.filter(id__in=[a.id for a in orphans]).delete()
+
+    def remove():
+        storage.delete_files(replaced)
+        if replaced:
+            logger.info("Expense %s: %s replaced receipt file(s) removed", row_id, len(replaced))
+
+    transaction.on_commit(remove)
+
+
+def replace_receipts(row: ReportExpense, uploaded, user) -> None:
+    """The line's receipts become ``uploaded`` (``(key, stored mime, original name)``, already in the
+    bucket); an old file no other link still uses leaves the bucket after the commit. Shared by the
+    draft edit (``update_expense``) and the submitted-report edit (``report_edits``)."""
+    keys = [key for key, _, _ in uploaded]
+    old_ids = list(ReportExpenseAttachment.objects.filter(report_expense_id=row.id)
+                   .values_list("attachment_id", flat=True))
+    ReportExpenseAttachment.objects.filter(report_expense_id=row.id).delete()
+    for order, (key, mime, name) in enumerate(uploaded):
+        attachment = _attachment_for(key, original_name=name, mime_type=mime, file_size=None, uploaded_by=user.id)
+        ReportExpenseAttachment.objects.create(report_expense_id=row.id, attachment_id=attachment.id,
+                                               sort_order=order, xero_attachment_id="")
+    _drop_orphans(row.id, old_ids, keep_keys=keys)
+
+
+def _remove_receipts(row: ReportExpense, remove: set[str]) -> None:
+    """Drop the links to the attachments in ``remove``; the rest keep their order, renumbered from 0
+    (Flask's ``set_receipts``)."""
+    links = list(ReportExpenseAttachment.objects.filter(report_expense_id=row.id).order_by("sort_order"))
+    gone = [link.attachment_id for link in links if str(link.attachment_id) in remove]
+    ReportExpenseAttachment.objects.filter(report_expense_id=row.id, attachment_id__in=gone).delete()
+    for order, link in enumerate(link for link in links if str(link.attachment_id) not in remove):
+        if link.sort_order != order:
+            ReportExpenseAttachment.objects.filter(id=link.id).update(sort_order=order)
+    _drop_orphans(row.id, gone)
+
+
+KEEP_A_RECEIPT = "Every expense needs its receipt. Attach a new receipt before removing the last one."
+
+
+def update_expense(report: Report, line: ReportExpense, user, *, amount: Decimal, remarks: str,
+                   supplier: XeroContactSync | None, account: AccountInfo | None, receipt=None,
+                   remove_receipt_ids=()) -> ReportExpense:
+    """Change a line of a DRAFT in place (Flask's ``update_expense``): the amount and description as
+    given, ``supplier`` / ``account`` when they change (a new account renames the line), ``receipt``
+    ``(bytes, mime, name)`` replacing the line's receipts, ``remove_receipt_ids`` dropping some - a
+    line always keeps one. Recompute the totals and log it. The new receipt is uploaded first and
+    deleted again if the rows then fail; replaced or removed files leave the bucket after the commit."""
+    if report.status != ReportStatus.DRAFT:
+        raise ExpenseRefused(NOT_A_DRAFT)
+    amount = cents(amount)
+    item = account.name if account is not None else line.item
+    remove = {str(i) for i in remove_receipt_ids or ()}
+    held = [str(i) for i in ReportExpenseAttachment.objects.filter(report_expense_id=line.id)
+            .values_list("attachment_id", flat=True)]
+    if receipt is None and not [i for i in held if i not in remove]:
+        raise ExpenseRefused(KEEP_A_RECEIPT)
+
+    uploaded = []  # (key, stored mime, original name)
+    try:
+        if receipt is not None:
+            data, mime, name = receipt
+            key, stored_mime = storage.upload_receipt(
+                data, mime, report, filename=name, description=item or remarks or "EXPENSE", amount=amount,
+            )
+            uploaded.append((key, stored_mime, name))
+        with transaction.atomic():
+            locked = Report.objects.select_for_update().get(id=report.id)
+            if locked.status != ReportStatus.DRAFT:
+                raise ExpenseRefused(NOT_A_DRAFT)
+            row = ReportExpense.objects.select_for_update().get(id=line.id)
+            row.item, row.amount, row.remarks = item, amount, remarks
+            fields = ["item", "amount", "remarks"]
+            if supplier is not None:
+                row.contact_id = supplier.id
+                fields.append("contact_id")
+            if account is not None:
+                row.account_id = account.id
+                fields.append("account_id")
+            row.save(update_fields=fields)
+            if uploaded:
+                replace_receipts(row, uploaded, user)
+            elif remove:
+                _remove_receipts(row, remove)
+            recompute_totals(locked)
+            locked.save()
+            log_history(locked, user, action="updated", field_changed="expense", old_value=f"expense_{row.id}",
+                        new_value=f"updated to amount: ${float(amount)}")
+    except BaseException:
+        storage.delete_files([key for key, _, _ in uploaded])
+        raise
+    report.expense_total = locked.expense_total
+    report.closing_balance = locked.closing_balance
+    return row
+
+
 def delete_expense(report: Report, line: ReportExpense, user) -> Decimal:
     """Delete ``line`` and its receipts from a DRAFT, recompute, log. Returns the new total."""
     if report.status != ReportStatus.DRAFT:

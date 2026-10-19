@@ -25,13 +25,13 @@ from core.policy import Permission, has_permission
 from petty_cash.files import storage
 from petty_cash.services.expenses import (
     ExpenseRefused,
-    _attachment_for,
     checked_receipt,
     expense_accounts,
+    replace_receipts,
     suppliers,
 )
 from shared_models.enums import ReportStatus
-from shared_models.models import Attachment, Report, ReportExpense, ReportExpenseAttachment
+from shared_models.models import Report, ReportExpense
 
 logger = logging.getLogger("petty-cash-api")
 
@@ -171,34 +171,9 @@ def edit_expense_line(report: Report, line: ReportExpense, user, *, remarks=None
             if fields:
                 row.save(update_fields=fields)
             if uploaded:
-                _replace_receipts(row, uploaded, user)
+                replace_receipts(row, uploaded, user)
             _save(locked)
     except BaseException:
         storage.delete_files([key for key, _, _ in uploaded])
         raise
 
-
-def _replace_receipts(row: ReportExpense, uploaded, user) -> None:
-    """The line's receipts become ``uploaded``; an old file no other link still uses leaves the
-    bucket after the commit (a failed edit keeps the old receipt AND its file)."""
-    keys = [key for key, _, _ in uploaded]
-    old_ids = list(ReportExpenseAttachment.objects.filter(report_expense_id=row.id)
-                   .values_list("attachment_id", flat=True))
-    ReportExpenseAttachment.objects.filter(report_expense_id=row.id).delete()
-    for order, (key, mime, name) in enumerate(uploaded):
-        attachment = _attachment_for(key, original_name=name, mime_type=mime, file_size=None, uploaded_by=user.id)
-        ReportExpenseAttachment.objects.create(report_expense_id=row.id, attachment_id=attachment.id,
-                                               sort_order=order, xero_attachment_id="")
-    orphans = list(
-        Attachment.objects.filter(id__in=old_ids).exclude(file_path__in=keys)
-        .exclude(id__in=ReportExpenseAttachment.objects.filter(attachment_id__in=old_ids).values("attachment_id"))
-    )
-    replaced = [a.file_path for a in orphans if a.file_path]
-    Attachment.objects.filter(id__in=[a.id for a in orphans]).delete()
-
-    def remove():
-        storage.delete_files(replaced)
-        if replaced:
-            logger.info("Expense %s: %s replaced receipt file(s) removed", row.id, len(replaced))
-
-    transaction.on_commit(remove)

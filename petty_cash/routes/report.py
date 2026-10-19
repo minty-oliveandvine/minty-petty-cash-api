@@ -38,7 +38,7 @@ from core.policy import Permission, can_delete_report, can_view_report, has_perm
 from petty_cash.days import hk
 from petty_cash.money import cents, out
 from petty_cash.routes._input import form_and_files, json_body
-from petty_cash.routes.close import _iso, _sales_history
+from petty_cash.routes.close import _iso, _sales_history, report_totals
 from petty_cash.routes.expenses import _company_line, lines_payload
 from petty_cash.routes.history import NO_REASONS
 from petty_cash.services.cash import expected_cash
@@ -93,8 +93,7 @@ def report_figures(report: Report, entity_id) -> dict:
     counted, cash_position = cash_summary(report)
     return {
         "kpis": {
-            "total_sales": out(report.total_sales),
-            "total_expenses": out(report.expense_total),
+            **report_totals(report),
             "cash_position": out(cash_position if cash_position is not None else report.closing_balance),
         },
         "sales": {

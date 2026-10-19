@@ -83,6 +83,35 @@
         "tags": [
           "Expenses"
         ]
+      },
+      "patch": {
+        "description": "A line of this company's DRAFT, in place - multipart, each field only when it changes:\n``amount``, ``remarks``, ``supplier_id``, ``account_id``, one ``receipt`` that replaces the line's\nreceipts, ``remove_receipt_ids`` (repeatable) dropping some. Checked as adding is; a submitted\nreport's line is ``PATCH /reports/{id}/expense-lines/{id}``'s, so here it is a 409.",
+        "operationId": "petty_cash_routes_expenses_edit_expense_line",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "line_id",
+            "required": true,
+            "schema": {
+              "title": "Line Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Edit Expense Line",
+        "tags": [
+          "Expenses"
+        ]
       }
     },
     "/api/petty-cash/v1/companies/{entity_id}/expense-lines/{line_id}/receipts/{attachment_id}": {
@@ -293,6 +322,27 @@
           }
         ],
         "summary": "Save Expenses Step Route",
+        "tags": [
+          "Expenses"
+        ]
+      }
+    },
+    "/api/petty-cash/v1/companies/{entity_id}/reports/expenses/extract": {
+      "post": {
+        "description": "Multipart ``receipt`` -> the model's suggestions for a line, read by Flask (this service holds\nno model code; ``core/accounts_api.py::forward_expense_extract``). Who may ask (403) and the file\n(422) are checked here first, with Flask's sentences, so a refusal never leaves this service;\nFlask checks both again. Every other outcome is 200 ``{suggestions, reason}``.",
+        "operationId": "petty_cash_routes_expenses_extract_expense",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Extract Expense",
         "tags": [
           "Expenses"
         ]
