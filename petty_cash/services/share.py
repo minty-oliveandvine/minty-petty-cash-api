@@ -1,8 +1,12 @@
 """A read-only link to a submitted day - Flask's ``blueprints/report/services/share.py``, ported.
-Flask SERVES the link (``/Minty_Report/{initials}/{date}/{secret}/``, ``report/routes/legacy.py``),
-so the row and the token are made exactly as Flask makes them, and the address is Flask's
-(``ACCOUNTS_API_URL``). One row per company-day: asking again renews its token and expiry and keeps
-its address. The secret, not the readable prefix, is what grants access.
+Two readers open a link: Flask's page (``/Minty_Report/{initials}/{date}/{secret}/``, to be deleted
+with Flask's HTML) and the public JSON read ``GET /api/petty-cash/v1/public/share/{path}``
+(``routes/public_share.py``, here and in Flask), which the petty-cash web apps' own ``/share/{path}``
+page shows. The row and the token are made exactly as Flask makes them, so either service opens
+either's link (``verify_share_token`` is Flask's ``utils.verify_share_token``, byte for byte, with
+the shared ``SECRET_KEY``). One row per company-day: asking again renews its token and expiry and
+keeps its address. The secret, not the readable prefix, is what grants access, and it is never
+logged - only the row id.
 
 Changed: ``expires_at`` is an aware UTC time (Flask stored its server's naive local time into a
 time-zone column).
@@ -17,12 +21,14 @@ import json
 import logging
 import re
 import secrets
+import time
 from datetime import UTC, date, datetime, timedelta
 
 from django.conf import settings
 from django.db import transaction
 
-from shared_models.models import Entity, ShareLink, UserEntity
+from shared_models.enums import ReportStatus
+from shared_models.models import Entity, Report, ShareLink, UserEntity
 
 logger = logging.getLogger("petty-cash-api")
 
@@ -64,7 +70,9 @@ def share_url(path_segment: str) -> str:
     return f"{settings.ACCOUNTS_API_URL}/Minty_Report/{path_segment}/"
 
 
-def create_share_link(user, entity_id, day: date) -> str:
+def create_share_link(user, entity_id, day: date) -> dict:
+    """``{url, path, expires_at}``: ``path`` is what the apps' own ``/share/{path}`` page takes;
+    ``url`` is Flask's page, which the apps stop using."""
     if not UserEntity.objects.filter(user_id=user.id, entity_id=entity_id).exists():
         raise ShareRefused("You don't have access to this entity", 403)
     entity = Entity.objects.filter(id=entity_id).first()
@@ -83,4 +91,99 @@ def create_share_link(user, entity_id, day: date) -> str:
         link.expires_at = datetime.now(UTC) + timedelta(hours=SHARE_LINK_HOURS)
         link.save()
     logger.info("share link issued: link=%s entity=%s date=%s user=%s", link.id, entity_id, day, user.id)
-    return share_url(link.path_segment)
+    return {"url": share_url(link.path_segment), "path": link.path_segment,
+            "expires_at": link.expires_at.astimezone(UTC).isoformat()}
+
+
+def verify_share_token(token, secret_key):
+    """Flask's ``utils.verify_share_token``: ``(True, params)`` for a token this pair of services
+    signed that has not run out, else ``(False, None)`` - never an exception."""
+    try:
+        token_data = base64.b64decode(token.encode("utf-8")).decode("utf-8")
+        parts = token_data.split("|")
+        if len(parts) != 3:
+            return False, None
+
+        params_str, expiration_str, signature = parts
+        expiration = int(expiration_str)
+        if time.time() > expiration:
+            return False, None
+
+        message = f"{params_str}|{expiration_str}"
+        expected_signature = hmac.new(
+            secret_key.encode("utf-8"), message.encode("utf-8"), hashlib.sha256
+        ).hexdigest()
+
+        if not hmac.compare_digest(signature, expected_signature):
+            return False, None
+
+        params = json.loads(params_str)
+        return True, params
+    except Exception:
+        return False, None
+
+
+class LinkRefused(Exception):
+    """A share link that opens nothing; ``reason`` is which check failed (Flask's
+    ``share.ShareRefused.reason``) - for the status and the log, never for the visitor."""
+
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
+
+
+def resolve_share(path_segment, remote_addr=None):
+    """``(link, entity, report)`` for a live "{initials}/{date}/{secret}" path, else LinkRefused -
+    Flask's ``share.resolve_share``, check for check. An expired link and one whose token fails its
+    signature are deleted; a token naming another company or day is refused and kept."""
+    if not is_share_path(path_segment):
+        logger.warning("share link refused: malformed or old-form path, from %s", remote_addr)
+        raise LinkRefused("malformed")
+
+    link = ShareLink.objects.filter(path_segment=path_segment.strip("/")).first()
+    if link is None:
+        logger.warning("share link refused: unknown secret, from %s", remote_addr)
+        raise LinkRefused("unknown")
+
+    if datetime.now(UTC) > link.expires_at:
+        logger.info("share link refused: expired, link %s removed", link.id)
+        link.delete()
+        raise LinkRefused("expired")
+
+    if not settings.SECRET_KEY:
+        logger.error("share link refused: SECRET_KEY is not set")
+        raise LinkRefused("misconfigured")
+
+    is_valid, params = verify_share_token(link.token, settings.SECRET_KEY)
+    if not is_valid or not params:
+        logger.warning("share link refused: token fails its signature, link %s removed", link.id)
+        link.delete()
+        raise LinkRefused("bad_token")
+
+    token_entity_id = params.get("entity_id")
+    token_transaction_date = params.get("transaction_date")
+    if not token_entity_id or not token_transaction_date:
+        logger.warning("share link refused: token names no company or day, link %s", link.id)
+        raise LinkRefused("bad_token")
+
+    # The signed token must name the same company and day as the row.
+    if str(token_entity_id) != str(link.entity_id) or str(token_transaction_date) != str(link.transaction_date):
+        logger.warning("share link refused: token does not match link %s", link.id)
+        raise LinkRefused("mismatch")
+
+    entity = Entity.objects.filter(id=str(token_entity_id)).first()
+    if entity is None:
+        logger.warning("share link refused: no company, link %s", link.id)
+        raise LinkRefused("no_company")
+
+    report_date = datetime.strptime(token_transaction_date, "%Y-%m-%d").date()
+    # Share-link target: SUBMITTED reports only, never a draft.
+    report = (Report.objects.filter(entity_id=str(token_entity_id), transaction_date=report_date)
+              .exclude(status=ReportStatus.DRAFT).first())
+    if report is None:
+        logger.warning("share link refused: no submitted report, link %s", link.id)
+        raise LinkRefused("no_report")
+
+    logger.info("share link opened: link=%s entity=%s date=%s from %s",
+                link.id, token_entity_id, token_transaction_date, remote_addr)
+    return link, entity, report

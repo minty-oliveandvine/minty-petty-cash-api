@@ -5,7 +5,9 @@
 - ``POST /reports/{id}/reopen``: back to a draft at Opening (the latest report only).
 - ``DELETE /reports/{id}``: the latest report, with its lines, receipts and counts. A report in
   Xero may be deleted (the owner, 2026-10-15) - the app warns, reading ``was_published``.
-- ``POST /reports/{id}/share-link``: a read-only link to the day, valid 30 days, served by Flask.
+- ``POST /reports/{id}/share-link``: a read-only link to the day, valid 30 days - ``{url, path,
+  expires_at}``; the apps show it at their own ``/share/{path}``, read through the public
+  ``GET /api/petty-cash/v1/public/share/{path}`` (``public_share.py``).
 - ``PUT /reports/{id}/difference-reason``, ``PUT /reports/{id}/withdrawal`` and
   ``PATCH /reports/{id}/expense-lines/{line id}``: a submitted report's details that move no
   balance (``services/report_edits.py``). Any submitted report may be edited this way, not only the
@@ -85,12 +87,44 @@ def daily_report(request, report_id: str):
     return report_payload(request, _report(request, report_id))
 
 
+def report_figures(report: Report, entity_id) -> dict:
+    """The day's figures: the KPIs, sales by method, the cash and the closing balance - what
+    ``GET /reports/{id}`` and the public share read (``public_share.py``) both show."""
+    counted, cash_position = cash_summary(report)
+    return {
+        "kpis": {
+            "total_sales": out(report.total_sales),
+            "total_expenses": out(report.expense_total),
+            "cash_position": out(cash_position if cash_position is not None else report.closing_balance),
+        },
+        "sales": {
+            "methods": [{**m, "amount": out(m["amount"])} for m in report_methods(entity_id, report.id)],
+            "cash": out(cash_sales_from_detail(report)),
+            "total": out(report.total_sales),
+        },
+        "cash": {
+            "opening_balance": out(report.opening_balance),
+            "cash_addition": out(report.cash_addition),
+            "cash_addition_type": report.cash_addition_type,
+            "cash_sales": out(report.cashsale_total),
+            "expenses": out(report.expense_total),
+            "bank_deposit": out(report.bank_deposit),
+            "expected": out(expected_cash(report)),
+            "counted": out(counted),
+            "safe_box": out(report.safe_box_balance),
+            "difference": {"amount": out(report.discrepancy_amount), "kind": str(report.discrepancy_type or "none"),
+                           "reason": report.discrepancy_reason or ""},
+        },
+        "closing_balance": out(report.closing_balance),
+    }
+
+
 def report_payload(request, report: Report) -> dict:
     """The Daily Report as ``GET /reports/{id}`` answers it (the edits answer it too)."""
     entity_id, user = request.company.id, request.auth_user
     facts = report_facts(report)
     label, tone = report_status(report)
-    counted, cash_position = cash_summary(report)
+    figures = report_figures(report, entity_id)
     expense_lines = list(lines(report.id))
     status = str(report.status)
     latest = not newer_exists(report)
@@ -111,36 +145,14 @@ def report_payload(request, report: Report) -> dict:
         "publishing_status": facts["publishing_status"],
         "xero_integrated": bool(report.xero_integrated),
         "was_published": was_published(report),
-        "kpis": {
-            "total_sales": out(report.total_sales),
-            "total_expenses": out(report.expense_total),
-            "cash_position": out(cash_position if cash_position is not None else report.closing_balance),
-        },
-        "sales": {
-            "methods": [{**m, "amount": out(m["amount"])} for m in report_methods(entity_id, report.id)],
-            "cash": out(cash_sales_from_detail(report)),
-            "total": out(report.total_sales),
-            "yesterday_total": yesterday,
-            "history": history,
-        },
+        "kpis": figures["kpis"],
+        "sales": {**figures["sales"], "yesterday_total": yesterday, "history": history},
         "expenses": {
             "lines": lines_payload(expense_lines),
             "total": out(sum((cents(line.amount) for line in expense_lines), Decimal("0.00"))),
         },
-        "cash": {
-            "opening_balance": out(report.opening_balance),
-            "cash_addition": out(report.cash_addition),
-            "cash_addition_type": report.cash_addition_type,
-            "cash_sales": out(report.cashsale_total),
-            "expenses": out(report.expense_total),
-            "bank_deposit": out(report.bank_deposit),
-            "expected": out(expected_cash(report)),
-            "counted": out(counted),
-            "safe_box": out(report.safe_box_balance),
-            "difference": {"amount": out(report.discrepancy_amount), "kind": str(report.discrepancy_type or "none"),
-                           "reason": report.discrepancy_reason or ""},
-        },
-        "closing_balance": out(report.closing_balance),
+        "cash": figures["cash"],
+        "closing_balance": figures["closing_balance"],
         "permissions": {
             "edit": status != "draft" and latest and has_permission(user, Permission.REPORT_EDIT_OWN, entity_id),
             "delete": latest and can_delete_report(user, report),
@@ -184,10 +196,9 @@ def share_link(request, report_id: str):
     if report.status == ReportStatus.DRAFT:
         raise Refused("A draft can't be shared. Submit the day first.", 409)
     try:
-        url = create_share_link(request.auth_user, report.entity_id, report.transaction_date)
+        return create_share_link(request.auth_user, report.entity_id, report.transaction_date)
     except ShareRefused as refused:
         raise Refused(refused.message, refused.status) from None
-    return {"url": url}
 
 
 def _edit(request, report: Report, change) -> dict:

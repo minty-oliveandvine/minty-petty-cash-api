@@ -962,6 +962,31 @@
           "Expenses"
         ]
       }
+    },
+    "/api/petty-cash/v1/public/share/{share_path}": {
+      "get": {
+        "operationId": "petty_cash_routes_public_share_shared_report",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "share_path",
+            "required": true,
+            "schema": {
+              "title": "Share Path",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Shared Report",
+        "tags": [
+          "Public share"
+        ]
+      }
     }
   },
   "servers": []

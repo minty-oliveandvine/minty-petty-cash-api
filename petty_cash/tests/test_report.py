@@ -321,7 +321,8 @@ def test_a_submitted_day_gets_a_share_link_flask_will_open(client, shop, notes):
     link = ShareLink.objects.get(entity_id=shop.entity.id, transaction_date=D3)
     initials, day, secret = link.path_segment.split("/")
     assert (initials, day, len(secret)) == ("AS", D3.strftime("%d_%b_%Y"), 32)
-    assert resp.json() == {"url": f"{settings.ACCOUNTS_API_URL}/Minty_Report/{link.path_segment}/"}
+    assert resp.json() == {"url": f"{settings.ACCOUNTS_API_URL}/Minty_Report/{link.path_segment}/",
+                           "path": link.path_segment, "expires_at": link.expires_at.isoformat()}
     assert _verify(link.token) == {"entity_id": str(shop.entity.id), "transaction_date": D3.isoformat()}
     assert link.expires_at - Report.objects.get(id=report.id).submitted_at > timedelta(days=29)
 
@@ -332,7 +333,9 @@ def test_asking_again_renews_the_same_link(client, shop, notes):
     first = _post(client, shop, report.id, "/share-link").json()
     again = _post(client, shop, report.id, "/share-link").json()
 
-    assert again == first and ShareLink.objects.filter(entity_id=shop.entity.id).count() == 1
+    assert (again["url"], again["path"]) == (first["url"], first["path"])  # the same link, renewed
+    assert again["expires_at"] >= first["expires_at"]
+    assert ShareLink.objects.filter(entity_id=shop.entity.id).count() == 1
 
 
 def test_a_draft_is_not_shared(client, shop, notes):

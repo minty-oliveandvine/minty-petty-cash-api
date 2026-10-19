@@ -6,7 +6,12 @@ Both services must read the SAME database (each one's ``DATABASE_URL``). Reads o
 write is proved on a disposable company with ``--write`` once a route has one.
 
     python scripts/parity.py --flask http://127.0.0.1:5010 --django http://127.0.0.1:8010 \
-        --entity <company id> --user <member's user id> [--day YYYY-MM-DD]
+        --entity <company id> --user <member's user id> [--day YYYY-MM-DD] [--share-link <row id>]
+
+``--share-link`` also compares the PUBLIC read ``GET /public/share/<path>`` of an existing
+``share_link`` row (never one made for the run): its path is read from the database here and never
+printed, and it is sent only when its token passes the signature check and it has not expired -
+otherwise either service would DELETE the row on reading it.
 
 The signing key is this repo's ``.env`` ``SECRET_KEY`` (the one both services verify with); it is
 never printed.
@@ -61,6 +66,8 @@ def main() -> int:
     parser.add_argument("--user", required=True)
     parser.add_argument("--day", help="transaction_date for the step reads")
     parser.add_argument("--report", action="append", default=[], help="a report id whose outcome, Daily Report and publishing status to compare")
+    parser.add_argument("--share-link", action="append", default=[],
+                        help="an existing, unexpired share_link row id whose public read to compare")
     parser.add_argument("--xero-settings", action="store_true",
                         help="also compare GET /settings/xero - ONLY for a company with no Xero connection: on a "
                              "connected one both services ask Xero, and a token refresh rotates a real refresh token")
@@ -86,12 +93,21 @@ def main() -> int:
         start = (date.fromisoformat(args.day) - timedelta(days=365)).isoformat()
         reads.append(f"/reports/export.csv?start_date={start}&end_date={args.day}")
 
+    requests_to_send = [(f"/api/petty-cash/v1/companies/{args.entity}{suffix}", suffix.split("?")[0], auth)
+                        for suffix in reads]
+    for link_id in args.share_link:
+        share_path = _share_path(link_id, secret)
+        if share_path is None:
+            return 2
+        # no token: anyone holding the link; the route name hides the secret
+        requests_to_send.append((f"/api/petty-cash/v1/public/share/{share_path}", "/public/share/<path>", {}))
+        requests_to_send.append((f"/api/petty-cash/v1/public/share/{share_path.rsplit('/', 1)[0]}/{'Z' * 32}",
+                                 "/public/share/<unknown secret>", {}))
+
     failed = False
-    for suffix in reads:
-        path = f"/api/petty-cash/v1/companies/{args.entity}{suffix}"
-        flask = requests.get(args.flask + path, headers=auth, timeout=60)
-        django = requests.get(args.django + path, headers=auth, timeout=60)
-        route = suffix.split("?")[0]
+    for path, route, send_headers in requests_to_send:
+        flask = requests.get(args.flask + path, headers=send_headers, timeout=60)
+        django = requests.get(args.django + path, headers=send_headers, timeout=60)
         if django.status_code == 404 and flask.status_code != 404:
             print(f"NOT PORTED {route or '/'}")
             continue
@@ -117,6 +133,31 @@ def main() -> int:
             failed = True
             print(f"    {field}: flask={json.dumps(a, default=str)[:120]}  django={json.dumps(b, default=str)[:120]}")
     return 1 if failed else 0
+
+
+def _share_path(link_id: str, secret: str) -> str | None:
+    """The row's path, read through this service's models (its ``.env`` database), or None when
+    reading it would delete it (expired, or a token that fails the signature)."""
+    import os
+    from datetime import UTC, datetime
+
+    import django
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
+    django.setup()
+    from petty_cash.services.share import verify_share_token
+    from shared_models.models import ShareLink
+
+    link = ShareLink.objects.filter(id=link_id).first()
+    if link is None:
+        print(f"No share_link {link_id}", file=sys.stderr)
+        return None
+    if link.expires_at <= datetime.now(UTC) or not verify_share_token(link.token, secret)[0]:
+        print(f"share_link {link_id} is expired or its token fails - reading it would delete it; not sent",
+              file=sys.stderr)
+        return None
+    return link.path_segment
 
 
 if __name__ == "__main__":
