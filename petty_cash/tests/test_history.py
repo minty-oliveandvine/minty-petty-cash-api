@@ -82,6 +82,7 @@ def test_one_page_newest_first_with_what_may_be_done(client, shop, flask):
     assert (first["total_sales"], first["total_expenses"]) == (12, 3)
     assert first["created_at"].endswith("+08:00") and first["submitted_at"] is None
     assert first["was_published"] is False and second["was_published"] is True
+    assert (first["publishing_status"], second["publishing_status"]) == ("unpublished", "failed")
     assert first["permissions"] == {"edit": True, "delete": True}
     assert second["status_label"] == "Publish failed" and second["permissions"] == {"edit": False, "delete": False}
     assert second["publish_reasons"] == [REASON]

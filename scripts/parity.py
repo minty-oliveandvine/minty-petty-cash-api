@@ -18,6 +18,7 @@ import argparse
 import json
 import sys
 import time
+from datetime import date, timedelta
 from pathlib import Path
 
 import jwt
@@ -59,7 +60,10 @@ def main() -> int:
     parser.add_argument("--entity", required=True)
     parser.add_argument("--user", required=True)
     parser.add_argument("--day", help="transaction_date for the step reads")
-    parser.add_argument("--report", action="append", default=[], help="a report id whose outcome and Daily Report to compare")
+    parser.add_argument("--report", action="append", default=[], help="a report id whose outcome, Daily Report and publishing status to compare")
+    parser.add_argument("--xero-settings", action="store_true",
+                        help="also compare GET /settings/xero - ONLY for a company with no Xero connection: on a "
+                             "connected one both services ask Xero, and a token refresh rotates a real refresh token")
     args = parser.parse_args()
 
     secret = dotenv_values(Path(__file__).resolve().parents[1] / ".env").get("SECRET_KEY")
@@ -69,11 +73,18 @@ def main() -> int:
     auth = {"Authorization": f"Bearer {_token(secret, args.user)}"}
     query = f"?transaction_date={args.day}" if args.day else ""
     reads = ["", "/home", "/settings", "/reports", "/reports?per_page=25&page=2", "/reports?status=failed"]
+    if args.xero_settings:
+        reads.insert(3, "/settings/xero")
     if args.day:
         reads += [f"/reports/{step}{query}" for step in ("opening", "sales", "expenses", "deposit", "cash-count",
                                                          "close")]
     for report_id in args.report:
-        reads += [f"/reports/{report_id}/outcome", f"/reports/{report_id}"]
+        reads += [f"/reports/{report_id}/outcome", f"/reports/{report_id}", f"/reports/{report_id}/publishing-status"]
+    reads.append("/reports/export.csv")  # no dates: the 422
+    if args.day:
+        # the longest range the export allows (366 days), ending on the day
+        start = (date.fromisoformat(args.day) - timedelta(days=365)).isoformat()
+        reads.append(f"/reports/export.csv?start_date={start}&end_date={args.day}")
 
     failed = False
     for suffix in reads:
@@ -87,10 +98,18 @@ def main() -> int:
         diffs = []
         if flask.status_code != django.status_code:
             diffs.append(("<status>", flask.status_code, django.status_code))
-        try:
-            diffs += list(_diff(flask.json(), django.json()))
-        except ValueError:
-            diffs.append(("<body>", flask.text[:80], django.text[:80]))
+        if "text/csv" in flask.headers.get("Content-Type", "") + django.headers.get("Content-Type", ""):
+            # a file: the bytes and the two headers that name it, exactly
+            if flask.content != django.content:
+                diffs.append(("<bytes>", f"{len(flask.content)} bytes", f"{len(django.content)} bytes"))
+            for header in ("Content-Type", "Content-Disposition"):
+                if flask.headers.get(header) != django.headers.get(header):
+                    diffs.append((f"<{header}>", flask.headers.get(header), django.headers.get(header)))
+        else:
+            try:
+                diffs += list(_diff(flask.json(), django.json()))
+            except ValueError:
+                diffs.append(("<body>", flask.text[:80], django.text[:80]))
         unexpected = [d for d in diffs if (route, d[0]) not in EXPECTED_DIFFS]
         print(f"{'MATCH' if not unexpected else 'DIFF '} {route or '/'} ({flask.status_code})"
               + (f" - expected: {', '.join(d[0] for d in diffs if d not in unexpected)}" if len(diffs) > len(unexpected) else ""))

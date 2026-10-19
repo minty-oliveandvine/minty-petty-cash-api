@@ -318,6 +318,26 @@
         ]
       }
     },
+    "/api/petty-cash/v1/companies/{entity_id}/reports/export.csv": {
+      "get": {
+        "operationId": "petty_cash_routes_history_export_csv",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Export Csv",
+        "tags": [
+          "History"
+        ]
+      }
+    },
     "/api/petty-cash/v1/companies/{entity_id}/reports/opening": {
       "get": {
         "operationId": "petty_cash_routes_opening_opening_page",
@@ -572,6 +592,66 @@
         ]
       }
     },
+    "/api/petty-cash/v1/companies/{entity_id}/reports/{report_id}/publish": {
+      "post": {
+        "operationId": "petty_cash_routes_report_publish",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "title": "Report Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Publish",
+        "tags": [
+          "Report"
+        ]
+      }
+    },
+    "/api/petty-cash/v1/companies/{entity_id}/reports/{report_id}/publishing-status": {
+      "get": {
+        "operationId": "petty_cash_routes_report_publishing_status",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "title": "Report Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Publishing Status",
+        "tags": [
+          "Report"
+        ]
+      }
+    },
     "/api/petty-cash/v1/companies/{entity_id}/reports/{report_id}/reopen": {
       "post": {
         "operationId": "petty_cash_routes_report_reopen",
@@ -795,6 +875,68 @@
           }
         ],
         "summary": "Save Country",
+        "tags": [
+          "Settings"
+        ]
+      }
+    },
+    "/api/petty-cash/v1/companies/{entity_id}/settings/xero": {
+      "get": {
+        "operationId": "petty_cash_routes_settings_xero_settings",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Xero Settings",
+        "tags": [
+          "Settings"
+        ]
+      }
+    },
+    "/api/petty-cash/v1/companies/{entity_id}/settings/xero/account-codes": {
+      "put": {
+        "description": "``{codes: [..]}``: exactly these account codes ticked for Petty Cash (at least one).",
+        "operationId": "petty_cash_routes_settings_save_xero_account_codes",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Save Xero Account Codes",
+        "tags": [
+          "Settings"
+        ]
+      }
+    },
+    "/api/petty-cash/v1/companies/{entity_id}/settings/xero/mapping": {
+      "put": {
+        "description": "``{main_bank, deposit_bank, cashsale_account, cashsale_contact, owners_account,\nowners_contact, discrepancy_account, discrepancy_contact}`` - Xero ids from the read's options.",
+        "operationId": "petty_cash_routes_settings_save_xero_mapping",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Save Xero Mapping",
         "tags": [
           "Settings"
         ]

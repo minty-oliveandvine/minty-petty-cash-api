@@ -10,6 +10,13 @@
   ``PATCH /reports/{id}/expense-lines/{line id}``: a submitted report's details that move no
   balance (``services/report_edits.py``). Any submitted report may be edited this way, not only the
   latest; each answers the Daily Report again.
+- ``POST /reports/{id}/publish``: start the Xero publish. The report and ``REPORT_PUBLISH`` are
+  checked here (404/403, no call), then Flask does it (``core/accounts_api.py::forward_publish``,
+  the owner's choice: this service holds no Xero code) and its answer comes back unchanged - 202
+  ``{publishing_status, message}`` or ``{error}`` plus ``reconnect: true`` when Xero must be
+  connected again. No usable answer is a 503/504 saying to check the report's status.
+- ``GET /reports/{id}/publishing-status``: how the publish went, from the report's columns; a
+  failed publish's ``reasons`` come from Flask (``publish_reasons``, as the history page's do).
 
 Another company's, an unknown or an unviewable report is 404. This router is mounted LAST
 (``petty_cash/api.py``): ``/reports/{id}`` would otherwise answer for ``/reports/opening``.
@@ -20,14 +27,18 @@ from __future__ import annotations
 import uuid
 from decimal import Decimal
 
+from django.http import JsonResponse
 from ninja import Router
 
+from core.accounts_api import PublishReasonsUnavailable, forward_publish, publish_reasons
 from core.exceptions import Refused
 from core.policy import Permission, can_delete_report, can_view_report, has_permission
+from petty_cash.days import hk
 from petty_cash.money import cents, out
 from petty_cash.routes._input import form_and_files, json_body
 from petty_cash.routes.close import _iso, _sales_history
 from petty_cash.routes.expenses import _company_line, lines_payload
+from petty_cash.routes.history import NO_REASONS
 from petty_cash.services.cash import expected_cash
 from petty_cash.services.expenses import expense_accounts, lines, suppliers
 from petty_cash.services.report_actions import (
@@ -221,3 +232,34 @@ def edit_report_line(request, report_id: str, line_id: str):
         r, line, request.auth_user, remarks=form.get("remarks") if "remarks" in form else None,
         supplier_id=form.get("supplier_id") or None, account_id=form.get("account_id") or None, receipts=receipts,
     ))
+
+
+@router.post("/reports/{report_id}/publish")
+def publish(request, report_id: str):
+    report = _report(request, report_id)
+    if not has_permission(request.auth_user, Permission.REPORT_PUBLISH, request.company.id):
+        raise Refused("You don't have permission to publish reports for this company.", 403)
+    answer, status = forward_publish(request.company.id, request.auth_user.id, report.id)
+    return JsonResponse(answer, status=status)
+
+
+@router.get("/reports/{report_id}/publishing-status")
+def publishing_status(request, report_id: str):
+    report = _report(request, report_id)
+    reasons = []
+    if report.publishing_status == "failed":
+        try:
+            reasons = publish_reasons(request.company.id, [report.id]).get(str(report.id), [])
+        except PublishReasonsUnavailable:
+            raise Refused(NO_REASONS, 503) from None
+    label, tone = report_status(report)
+    return {
+        "report_id": str(report.id),
+        "publishing_status": str(report.publishing_status) if report.publishing_status else None,
+        "status_label": label,
+        "status_tone": tone,
+        "xero_integrated": bool(report.xero_integrated),
+        "was_published": was_published(report),
+        "published_at": _iso(hk(report.published_at)),
+        "reasons": [{"text": r["text"], "resolved": bool(r["resolved"])} for r in reasons],
+    }

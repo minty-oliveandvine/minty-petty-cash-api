@@ -24,6 +24,7 @@ from petty_cash.days import parse_day, today
 from petty_cash.money import cents, out
 from petty_cash.routes._input import BAD_DATE, json_body, query_day, require_edit
 from petty_cash.services.cash import expected_cash
+from petty_cash.services.report_actions import was_published
 from petty_cash.services.report_page import report_facts
 from petty_cash.services.reports import (
     actual_cash_total,
@@ -172,7 +173,9 @@ def report_outcome(request, report_id: str):
         "difference": {"amount": out(report.discrepancy_amount), "kind": str(report.discrepancy_type or "none"),
                        "has_reason": bool((report.discrepancy_reason or "").strip())},
         "xero": {"publishing_status": facts["publishing_status"], "published_at": _iso(facts["published_at"]),
-                 "xero_integrated": bool(report.xero_integrated)},
+                 "xero_integrated": bool(report.xero_integrated),
+                 # it has been to Xero, even if changed since: a publish warns (report_actions)
+                 "was_published": was_published(report)},
         "can_publish": has_permission(request.auth_user, Permission.REPORT_PUBLISH, entity_id),
         "is_today": report.transaction_date == today(),
         "next_day": (report.transaction_date + timedelta(days=1)).isoformat(),

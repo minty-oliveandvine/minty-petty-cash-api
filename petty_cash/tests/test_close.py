@@ -314,7 +314,8 @@ def test_the_outcome_says_what_was_counted_and_what_happens_next(client, shop, n
     assert body["report_id"] == str(report.id) and body["submitted"] is True and body["status"] == "submitted"
     assert body["cash_counted"] == 50
     assert body["difference"] == {"amount": -5, "kind": "short", "has_reason": True}
-    assert body["xero"] == {"publishing_status": "unpublished", "published_at": None, "xero_integrated": False}
+    assert body["xero"] == {"publishing_status": "unpublished", "published_at": None, "xero_integrated": False,
+                            "was_published": False}
     assert body["next_day"] == (D3 + timedelta(days=1)).isoformat() and body["is_today"] is False
     assert body["company_name"] == "Acme Shop" and body["submitted_by"] == "Olive Owner"
     assert body["submitted_at"].endswith("+08:00")  # Hong Kong time, as Flask's outcome page

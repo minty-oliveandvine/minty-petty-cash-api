@@ -1,12 +1,16 @@
-"""Petty Cash settings without Xero - Flask's ``petty_cash_api/routes/settings.py``: Country & currency
-and the Electronic / Delivery sales methods. The Xero mapping and the account codes stay on Flask's
-page (the owner, 2026-10-16).
+"""Petty Cash settings - Flask's ``petty_cash_api/routes/settings.py``: Country & currency and the
+Electronic / Delivery sales methods here; the Xero cards forwarded to Flask.
 
 - ``GET /settings``: the country and currency with the lists offered, the two method lists, the
   catalogue methods not on them, whether Xero is connected, and what this person may change.
 - ``PUT /settings/country`` ``{country_code, currency_id}``.
 - ``POST /sales-methods`` ``{type, sale_info_id | name}``, ``PUT /sales-methods/{id}`` ``{name}``,
   ``DELETE /sales-methods/{id}``, ``PUT /sales-methods/order`` ``{type, method_ids}``.
+- ``GET /settings/xero``, ``PUT /settings/xero/mapping``, ``PUT /settings/xero/account-codes``: the
+  Xero cards, which check the connection live and refresh from Xero, so Flask does them
+  (``core/accounts_api.py::forward_xero_settings``, the owner's choice: this service holds no Xero
+  code) and its answer comes back unchanged. The rights are checked here first (``COA_VIEW`` to
+  read, ``COUNTRY_RIGHTS`` to save; 403, no call); the connection, the 409s and 422s are Flask's.
 
 Every write answers the whole settings payload with a ``message``. Name lengths are the schema's -
 ``sale_info.sale_name`` and ``value_name`` are 80 characters, and a new method's ``value_name`` is
@@ -21,6 +25,7 @@ import uuid
 from django.http import JsonResponse
 from ninja import Router
 
+from core.accounts_api import forward_xero_settings
 from core.exceptions import Refused
 from core.policy import Permission, has_permission
 from petty_cash.routes._input import json_body
@@ -40,6 +45,8 @@ from petty_cash.services.settings import (
 from shared_models.models import Entity, SaleInfo
 
 router = Router()
+
+NO_VIEW = "You don't have permission to see these settings."
 
 #: the most a NEW method's name may hold: its value_name (name + "_sales") must fit 80 characters
 ADD_NAME_MAX = 80 - len("_sales")
@@ -109,8 +116,37 @@ def _listed(entity_id, method_id) -> bool:
 @router.get("/settings")
 def settings_page(request):
     if not _may(request, "COA_VIEW"):
-        raise Refused("You don't have permission to see these settings.", 403)
+        raise Refused(NO_VIEW, 403)
     return settings_payload(request)
+
+
+@router.get("/settings/xero")
+def xero_settings(request):
+    if not _may(request, "COA_VIEW"):
+        raise Refused(NO_VIEW, 403)
+    return _xero(request, "read", None)
+
+
+@router.put("/settings/xero/mapping")
+def save_xero_mapping(request):
+    """``{main_bank, deposit_bank, cashsale_account, cashsale_contact, owners_account,
+    owners_contact, discrepancy_account, discrepancy_contact}`` - Xero ids from the read's options."""
+    if not _may(request, *COUNTRY_RIGHTS):
+        raise Refused(NO_RIGHT, 403)
+    return _xero(request, "mapping", _body(request))
+
+
+@router.put("/settings/xero/account-codes")
+def save_xero_account_codes(request):
+    """``{codes: [..]}``: exactly these account codes ticked for Petty Cash (at least one)."""
+    if not _may(request, *COUNTRY_RIGHTS):
+        raise Refused(NO_RIGHT, 403)
+    return _xero(request, "account-codes", _body(request))
+
+
+def _xero(request, action: str, body):
+    answer, status = forward_xero_settings(request.company.id, request.auth_user.id, action, body)
+    return JsonResponse(answer, status=status)
 
 
 @router.put("/settings/country")

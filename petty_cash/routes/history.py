@@ -5,12 +5,19 @@ newest day first, each with its Status pill, its figures, who submitted it, a fa
 reasons (from Flask - the owner's choice, 2026-10-16: this service holds no Xero code) and what this
 person may do to it. A bad filter is refused (422) with a sentence; failed rows whose reasons Flask
 can't give make the page a 503 rather than show them with none.
+
+``GET /reports/export.csv?start_date=&end_date=``: the movements CSV of the submitted reports in the
+range (``services/report_csv.py``, Flask's ``report_csv.py`` byte for byte) as a file. Both dates,
+``YYYY-MM-DD``, start on or before end, at most a year (366 days); a bad range is 422, nothing to
+export 404. Static, and the report router is mounted last, so ``/reports/{report_id}`` never
+captures it.
 """
 
 from __future__ import annotations
 
 from datetime import date
 
+from django.http import HttpResponse
 from ninja import Router
 
 from core.accounts_api import PublishReasonsUnavailable, publish_reasons
@@ -19,6 +26,7 @@ from core.policy import Permission, can_delete_report, has_permission
 from petty_cash.days import hk
 from petty_cash.money import out
 from petty_cash.routes.close import _iso
+from petty_cash.services import report_csv
 from petty_cash.services.history import STATUS_FILTERS, report_history
 from petty_cash.services.report_actions import was_published
 from petty_cash.services.report_page import report_status
@@ -29,6 +37,15 @@ router = Router()
 
 PER_PAGE = (10, 25, 50, 100)
 NO_REASONS = "I couldn't load why some reports didn't publish. Try again in a moment."
+#: The export's sentence for each refused range (``report_csv.parse_range``'s reasons) - Flask's.
+EXPORT_REFUSALS = {
+    "missing": "Choose both dates to export the reports between them.",
+    "format": "A date isn't in the YYYY-MM-DD form. Choose it from the calendar.",
+    "order": "The start date is after the end date. Choose a start on or before the end.",
+    "too_long": "The range is longer than a year. Choose 366 days or fewer.",
+}
+NO_EXPORT_ACCESS = "You don't have permission to export this company's reports."
+NOTHING_TO_EXPORT = "There are no submitted reports between those dates. Choose another range."
 
 
 def _filters(args) -> dict:
@@ -92,6 +109,8 @@ def history(request):
             "created_at": _iso(hk(report.created_at)),  # when the day was started - a draft's only time
             "submitted_at": _iso(hk(report.submitted_at)),
             "published_at": _iso(hk(report.published_at)),
+            # a row already publishing when the list loads can be watched (GET .../publishing-status)
+            "publishing_status": str(report.publishing_status) if report.publishing_status is not None else None,
             # it has been to Xero, even if edited since: the delete warns (as GET /reports/{id})
             "was_published": was_published(report),
             "publish_reasons": reasons.get(str(report.id), []),
@@ -110,3 +129,21 @@ def history(request):
         "currency_code": currency_code(entity_id),
         "can_publish": has_permission(person, Permission.REPORT_PUBLISH, entity_id),
     }
+
+
+@router.get("/reports/export.csv")
+def export_csv(request):
+    entity_id = request.company.id
+    if not report_csv.may_export(request.auth_user, entity_id):
+        raise Refused(NO_EXPORT_ACCESS, 403)
+    try:
+        first, last = report_csv.parse_range(request.GET.get("start_date"), request.GET.get("end_date"))
+    except report_csv.RangeRefused as refused:
+        raise Refused(EXPORT_REFUSALS[refused.reason], 422) from None
+    rows = report_csv.movements(entity_id, report_csv.submitted_reports(entity_id, first, last))
+    if not rows:
+        raise Refused(NOTHING_TO_EXPORT, 404)
+    # Access-Control-Expose-Headers: Content-Disposition is settings.CORS_EXPOSE_HEADERS
+    resp = HttpResponse(report_csv.to_csv(rows), content_type="text/csv; charset=utf-8")
+    resp["Content-Disposition"] = report_csv.export_disposition(request.company.name, first, last)
+    return resp
