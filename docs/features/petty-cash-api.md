@@ -30,7 +30,7 @@ Every route is under `/api/petty-cash/v1/companies/{entity_id}`. The company com
 
 **Responses** (`core/exceptions.py`, `core/middleware.py`): always JSON. A refusal is `{"error": "<sentence>"}` - a sentence the app shows as it stands - sometimes with `to`, `field` or `report_id` the app routes on. `unauthorized` sends the app back through Flask's hand-off. A 500 says "Something went wrong on our side. Please try again." and the detail goes to the log only. An unknown path is a JSON `404`. Every response is `Cache-Control: no-store`.
 
-**CORS**: `PETTY_CASH_WEB_URL` (default `http://localhost:3010`; `CORS_ALLOWED_ORIGINS` overrides) and a `petty-cash` preview set where `PREVIEW_ORIGIN_REGEX` allows it (`config/preview_origin.py`, refuses to boot on a pattern that could match other hosts); methods `GET, POST, PUT, PATCH, DELETE, OPTIONS`; headers `authorization, content-type` (no `x-entity-id`). Refusals carry CORS too, so the app can see its 401.
+**CORS**: `PETTY_CASH_WEB_URL` (default `http://localhost:3010`; `CORS_ALLOWED_ORIGINS` overrides) and a `pettycash` preview set where `PREVIEW_ORIGIN_REGEX` allows it (`config/preview_origin.py`, refuses to boot on a pattern that could match other hosts); methods `GET, POST, PUT, PATCH, DELETE, OPTIONS`; headers `authorization, content-type` (no `x-entity-id`). Refusals carry CORS too, so the app can see its 401.
 
 ## Endpoints
 
