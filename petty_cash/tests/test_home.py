@@ -10,7 +10,7 @@ import pytest
 from petty_cash.days import today
 from petty_cash.tests.conftest import headers, make_report, make_user, url
 from shared_models.enums import EntityRole, SystemRole
-from shared_models.models import UserEntity
+from shared_models.models import EntityPettycashSettings, UserEntity
 
 pytestmark = pytest.mark.django_db
 TODAY = today()
@@ -45,6 +45,7 @@ def test_a_new_company(client, shop):
         "submitter_first_name": None,
     }
     assert home["draft"] is None and home["draft_date"] is None
+    assert home["start_date"] is None
     assert home["published"] == {}
     assert home["today_has_report"] is False and home["today_is_latest_report"] is False
     assert home["xero_settings"] == {
@@ -93,6 +94,17 @@ def test_the_calendar_floor_is_the_earliest_draft(client, shop):
 
     assert home["draft_date"] == (TODAY - timedelta(days=3)).isoformat()
     assert home["latest"]["date"] == TODAY.isoformat()  # the newest draft drives the card
+
+
+def test_the_onboarding_start_date_is_the_first_reports_floor(client, shop):
+    start = TODAY - timedelta(days=5)
+    EntityPettycashSettings.objects.create(entity_id=shop.entity.id, opening_balance=500, start_date=start)
+
+    home = _home(client, shop)
+
+    # onboarding seeds no draft, so the start date is the calendar's only floor
+    assert home["start_date"] == start.isoformat()
+    assert home["draft_date"] is None
 
 
 def test_today_submitted(client, shop):

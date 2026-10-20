@@ -34,6 +34,8 @@ from dotenv import dotenv_values
 EXPECTED_DIFFS = {
     # seconds since the draft was last edited: the two requests are not simultaneous
     ("/home", "draft.last_edit_seconds"): "timing",
+    # onboarding's start date, added here for the web app's floor; Flask's /home has no such key
+    ("/home", "start_date"): "added",
 }
 
 

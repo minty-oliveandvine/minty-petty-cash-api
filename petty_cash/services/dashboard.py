@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from django.db.models import Count, Min
 
 from petty_cash.days import today
+from petty_cash.services.reports import first_report_defaults
 from petty_cash.services.xero_settings import account_for_role, missing_slots
 from shared_models.enums import ReportStatus
 from shared_models.models import CurrencyInfo, Entity, Report, User, UserEntity
@@ -118,6 +119,8 @@ def dashboard_state(entity_id: str) -> dict:
         ),
         "draft": draft,
         "draft_date": draft_date,
+        # Onboarding's start date: the first report's floor (onboarding seeds no draft any more).
+        "start_date": first_report_defaults(entity_id)[1],
         "published": published,
         "today_has_report": today_iso in published,
         "today_is_latest_report": today_iso == latest_iso,

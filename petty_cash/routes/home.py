@@ -57,6 +57,7 @@ def home_payload(entity_id: str, person) -> dict:
             else None
         ),
         "draft_date": iso(state["draft_date"]),
+        "start_date": iso(state["start_date"]),
         "published": {
             day: {
                 "id": str(row["id"]),
