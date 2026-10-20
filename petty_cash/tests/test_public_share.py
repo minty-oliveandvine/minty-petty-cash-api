@@ -64,7 +64,7 @@ def test_the_share_link_answers_the_path_the_apps_build_their_own_page_from(shar
 
     assert set(body) == {"url", "path", "expires_at"}
     assert re.fullmatch(r"[A-Za-z]+/\d{2}_[A-Z][a-z]{2}_\d{4}/[A-Za-z0-9_-]{32}", body["path"])
-    assert body["url"] == f"{settings.ACCOUNTS_API_URL}/Minty_Report/{body['path']}/"
+    assert body["url"] == f"{settings.PETTY_CASH_WEB_URL}/share/{body['path']}"  # the web app's page, never Flask's
     assert timedelta(days=29) < datetime.fromisoformat(body["expires_at"]) - datetime.now(UTC) <= timedelta(days=30)
 
 

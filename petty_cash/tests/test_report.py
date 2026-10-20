@@ -321,7 +321,7 @@ def test_a_submitted_day_gets_a_share_link_flask_will_open(client, shop, notes):
     link = ShareLink.objects.get(entity_id=shop.entity.id, transaction_date=D3)
     initials, day, secret = link.path_segment.split("/")
     assert (initials, day, len(secret)) == ("AS", D3.strftime("%d_%b_%Y"), 32)
-    assert resp.json() == {"url": f"{settings.ACCOUNTS_API_URL}/Minty_Report/{link.path_segment}/",
+    assert resp.json() == {"url": f"{settings.PETTY_CASH_WEB_URL}/share/{link.path_segment}",
                            "path": link.path_segment, "expires_at": link.expires_at.isoformat()}
     assert _verify(link.token) == {"entity_id": str(shop.entity.id), "transaction_date": D3.isoformat()}
     assert link.expires_at - Report.objects.get(id=report.id).submitted_at > timedelta(days=29)

@@ -1,8 +1,8 @@
 """A read-only link to a submitted day - Flask's ``blueprints/report/services/share.py``, ported.
-Two readers open a link: Flask's page (``/Minty_Report/{initials}/{date}/{secret}/``, to be deleted
-with Flask's HTML) and the public JSON read ``GET /api/petty-cash/v1/public/share/{path}``
+A link is read through the public JSON read ``GET /api/petty-cash/v1/public/share/{path}``
 (``routes/public_share.py``, here and in Flask), which the petty-cash web apps' own ``/share/{path}``
-page shows. The row and the token are made exactly as Flask makes them, so either service opens
+page shows; Flask's old page address (``/Minty_Report/{initials}/{date}/{secret}/``) only redirects
+there. The row and the token are made exactly as Flask makes them, so either service opens
 either's link (``verify_share_token`` is Flask's ``utils.verify_share_token``, byte for byte, with
 the shared ``SECRET_KEY``). One row per company-day: asking again renews its token and expiry and
 keeps its address. The secret, not the readable prefix, is what grants access, and it is never
@@ -67,12 +67,13 @@ def share_token(entity_id, day: date, secret_key: str, expiration_hours: int = S
 
 
 def share_url(path_segment: str) -> str:
-    return f"{settings.ACCOUNTS_API_URL}/Minty_Report/{path_segment}/"
+    """The Petty Cash web app's public page for the link - never Flask's (its HTML is gone)."""
+    return f"{settings.PETTY_CASH_WEB_URL}/share/{path_segment}"
 
 
 def create_share_link(user, entity_id, day: date) -> dict:
     """``{url, path, expires_at}``: ``path`` is what the apps' own ``/share/{path}`` page takes;
-    ``url`` is Flask's page, which the apps stop using."""
+    ``url`` is that page on ``PETTY_CASH_WEB_URL``."""
     if not UserEntity.objects.filter(user_id=user.id, entity_id=entity_id).exists():
         raise ShareRefused("You don't have access to this entity", 403)
     entity = Entity.objects.filter(id=entity_id).first()
