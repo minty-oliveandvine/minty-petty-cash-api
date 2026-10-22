@@ -3,6 +3,7 @@ from pathlib import Path
 
 from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
+from minty_shared.logctx import logging_config
 
 from config.dburl import database_url, parse_database_url
 from config.preview_origin import preview_origin_regexes
@@ -111,41 +112,14 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = MAX_RECEIPT_BYTES + 1024 * 1024
 FILE_UPLOAD_MAX_MEMORY_SIZE = MAX_RECEIPT_BYTES + 1024 * 1024
 
 # ---------------------------------------------------------------------------
-# Logging - the same core + API formatters as the other Django services.
+# Logging - one line format for every Minty backend (minty_shared.logctx):
+#   <UTC>Z LEVEL [trace=…] [user=…|entity=…|step=…] message
 # ---------------------------------------------------------------------------
 LOG_DIR = BASE_DIR / "logs"
-LOG_DIR.mkdir(exist_ok=True)
 
-LOGGING = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "formatters": {
-        "core": {"()": "core.log_formatters.CoreFormatter"},
-        "api": {"()": "core.log_formatters.ApiFormatter"},
-    },
-    "handlers": {
-        "console_core": {"class": "logging.StreamHandler", "formatter": "core"},
-        "console_api": {"class": "logging.StreamHandler", "formatter": "api"},
-        "file_core": {
-            "class": "logging.FileHandler",
-            "filename": str(LOG_DIR / "core.log"),
-            "formatter": "core",
-        },
-        "file_api": {
-            "class": "logging.FileHandler",
-            "filename": str(LOG_DIR / "api.log"),
-            "formatter": "api",
-        },
-    },
-    "loggers": {
-        "petty-cash-api": {
-            "handlers": ["console_core", "file_core"],
-            "level": os.environ.get("LOG_LEVEL", "INFO"),
-        },
-        "petty-cash-api.http": {
-            "handlers": ["console_api", "file_api"],
-            "level": os.environ.get("LOG_LEVEL", "INFO"),
-            "propagate": False,
-        },
-    },
-}
+LOGGING = logging_config(
+    {"petty-cash-api": "core.log", "petty-cash-api.http": "api.log"},
+    log_dir=LOG_DIR,
+    no_propagate=["petty-cash-api.http"],
+    level=os.environ.get("LOG_LEVEL", "INFO"),
+)

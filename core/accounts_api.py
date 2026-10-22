@@ -25,6 +25,7 @@ from datetime import UTC, datetime, timedelta
 import jwt
 import requests
 from django.conf import settings
+from minty_shared import logctx
 
 logger = logging.getLogger("petty-cash-api")
 
@@ -42,6 +43,12 @@ def service_assertion(scope: str, entity_id, **claims) -> str:
     return jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
 
 
+def assertion_headers(assertion: str) -> dict[str, str]:
+    """The headers of every call to Flask: the assertion, and the request's trace
+    (``minty_shared.logctx``) so both services' lines for it share one id."""
+    return {"Authorization": f"Bearer {assertion}", **logctx.outgoing_headers()}
+
+
 def _forward(what: str, path: str, scope: str, timeout, unconfirmed: str, entity_id, user_id, body) -> tuple[dict, int]:
     """Flask's answer to ``body`` at ``path``, as ``(json, status)`` - the Petty Cash API's own
     shape, handed on unchanged. No usable answer (unreachable, cut off, not the API's JSON) is a 503,
@@ -49,7 +56,7 @@ def _forward(what: str, path: str, scope: str, timeout, unconfirmed: str, entity
     assertion = service_assertion(scope, entity_id, user_id=str(user_id))
     url = f"{settings.ACCOUNTS_API_URL}{path}"
     try:
-        resp = requests.post(url, json=body, headers={"Authorization": f"Bearer {assertion}"}, timeout=timeout)
+        resp = requests.post(url, json=body, headers=assertion_headers(assertion), timeout=timeout)
     except requests.Timeout:
         logger.error("%s: Flask did not answer in time for company %s", what, entity_id)
         return {"error": unconfirmed}, 504
@@ -128,7 +135,7 @@ def publish_reasons(entity_id, report_ids) -> dict[str, list[dict]]:
     url = f"{settings.ACCOUNTS_API_URL}/api/internal/xero/publish-reasons"
     try:
         resp = requests.post(url, json={"report_ids": [str(i) for i in report_ids]},
-                             headers={"Authorization": f"Bearer {assertion}"}, timeout=PUBLISH_REASONS_TIMEOUT)
+                             headers=assertion_headers(assertion), timeout=PUBLISH_REASONS_TIMEOUT)
         body = resp.json() if resp.status_code == 200 else None
     except (requests.RequestException, ValueError) as exc:
         logger.error("Publish reasons: no answer from Flask for company %s: %s", entity_id, exc)
@@ -162,7 +169,7 @@ def forward_expense_extract(entity_id, user_id, receipt: bytes, mime: str, name:
     url = f"{settings.ACCOUNTS_API_URL}/api/internal/petty-cash/expense-extract"
     try:
         resp = requests.post(url, files={"receipt": (name or "receipt", receipt, mime)},
-                             headers={"Authorization": f"Bearer {assertion}"}, timeout=EXPENSE_EXTRACT_TIMEOUT)
+                             headers=assertion_headers(assertion), timeout=EXPENSE_EXTRACT_TIMEOUT)
     except requests.Timeout:
         logger.error("Expense extract: Flask did not answer in time for company %s", entity_id)
         return {"suggestions": None, "reason": REASON_TIMEOUT}, 200

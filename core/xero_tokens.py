@@ -16,7 +16,7 @@ from dataclasses import dataclass
 import requests
 from django.conf import settings
 
-from core.accounts_api import service_assertion
+from core.accounts_api import assertion_headers, service_assertion
 
 logger = logging.getLogger("petty-cash-api")
 
@@ -42,7 +42,7 @@ def xero_token(entity_id) -> XeroToken:
     assertion = service_assertion(SCOPE, entity_id)
     url = f"{settings.ACCOUNTS_API_URL}/api/internal/xero/token"
     try:
-        resp = requests.post(url, headers={"Authorization": f"Bearer {assertion}"}, timeout=settings.XERO_TOKEN_TIMEOUT)
+        resp = requests.post(url, headers=assertion_headers(assertion), timeout=settings.XERO_TOKEN_TIMEOUT)
     except requests.RequestException as exc:
         logger.error("Xero token service unreachable for company %s: %s", entity_id, exc)
         raise XeroTokenUnavailable(reconnect=False) from None

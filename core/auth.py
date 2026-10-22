@@ -26,6 +26,7 @@ from dataclasses import dataclass
 
 import jwt
 from django.conf import settings
+from minty_shared import logctx
 from ninja.security import HttpBearer
 
 from core.entitlements import is_module_enabled
@@ -105,6 +106,9 @@ class PettyCashBearerAuth(HttpBearer):
         user = User.objects.filter(id=user_id).first()
         if user is None or not user.approved:
             return None
+        # The person is known from here on (a signed, unexpired token for an approved user), so
+        # the refusals below name them; the company only once every check has passed.
+        logctx.bind(user=user.id)
 
         entity_id = (request.resolver_match.kwargs if request.resolver_match else {}).get("entity_id")
         company = company_for(user, entity_id)
@@ -118,4 +122,5 @@ class PettyCashBearerAuth(HttpBearer):
 
         request.auth_user = user
         request.company = company
+        logctx.bind(entity=company.id)
         return user
