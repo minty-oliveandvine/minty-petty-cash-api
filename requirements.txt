@@ -10,8 +10,9 @@ python-dotenv>=1.0,<2.0
 gunicorn>=23.0,<24.0
 requests>=2.28,<3.0
 # The one log line every Minty backend writes (minty_shared.logctx). An immutable tag: a change
-# is a new tag, bumped in all five backends.
-minty-shared @ git+https://github.com/minty-oliveandvine/minty-shared-py@v0.1
+# is a new tag, bumped in all five backends. The tag's archive, not git+: the slim Docker images
+# have no git.
+minty-shared @ https://github.com/minty-oliveandvine/minty-shared-py/archive/refs/tags/v0.1.tar.gz
 # Receipts: B2 through the S3 API, and Flask's downsizing (images with Pillow, PDFs with pikepdf).
 boto3>=1.35,<2.0
 Pillow>=11.0,<12.0
