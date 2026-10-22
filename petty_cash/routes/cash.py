@@ -133,7 +133,7 @@ def cash_count_page(request):
         **_figures(draft),
         "denominations": [
             {"id": str(row["cash_id"]), "value": row["value"], "kind": str(row["type"] or ""),
-             "count": int(row["count"] or 0)}
+             "name": row["name"], "count": int(row["count"] or 0)}
             for row in denomination_rows(entity_id, draft.id)
         ],
         "safe_box_balance": out(draft.safe_box_balance),

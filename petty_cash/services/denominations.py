@@ -81,7 +81,8 @@ def denomination_rows(entity_id, report_id) -> list[dict]:
     """The denominations with the report's saved counts (0 without a row)."""
     saved = dict(ReportCashCount.objects.filter(report_id=report_id).values_list("cash_id", "quantity"))
     return [
-        {"cash_id": d.cash_id, "value": float(d.value), "type": d.kind, "count": saved.get(d.cash_id, 0)}
+        {"cash_id": d.cash_id, "value": float(d.value), "type": d.kind, "name": d.name,
+         "count": saved.get(d.cash_id, 0)}
         for d in denominations_for(entity_id)
     ]
 

@@ -172,6 +172,21 @@ def test_a_negative_opening_is_refused_back_to_the_page(client, shop):
     assert _row(shop, D3) is None
 
 
+def test_no_report_starts_before_the_company_has_a_currency(client, shop):
+    """Owner 2026-10-21: never a silent "$" - a company with no currency picks one first."""
+    shop.entity.currency_id = None
+    shop.entity.save(update_fields=["currency_id"])
+
+    resp = _put(client, shop, _body(D3))
+
+    assert resp.status_code == 409
+    assert resp.json() == {
+        "error": "No currency is selected for this company. Choose one in Petty Cash Settings to start a report.",
+        "to": "dashboard",
+    }
+    assert _row(shop, D3) is None
+
+
 def test_a_submitted_day_cannot_be_opened_again(client, shop):
     """The date rule answers first: after a submitted D3 only the next day may open."""
     make_report(shop.entity, D3, created_by=shop.owner.id, closing_balance=5)
