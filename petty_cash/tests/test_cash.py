@@ -140,7 +140,7 @@ def test_rule_a_deposit_above_the_cash_on_hand_is_a_422_on_the_field(client, sho
     resp = _put(client, shop, "deposit", {"bank_deposit": 155.01})
 
     assert resp.status_code == 422
-    assert resp.json() == {"error": "The deposit can't be more than the cash on hand. Enter HKD155.00 or less.",
+    assert resp.json() == {"error": "The deposit can't be more than the cash on hand. Enter HKD\u00a0155.00 or less.",
                            "field": "bank_deposit"}
     assert _row(draft).bank_deposit == 0 and _history(draft) == []
 
@@ -193,7 +193,8 @@ def test_the_count_read_brings_the_denominations_the_expected_cash_and_the_saved
     body = _get(client, shop, "cash-count").json()
 
     assert [d["value"] for d in body["denominations"]] == list(FACES)
-    assert body["denominations"][0] == {"id": notes[1000], "value": 1000, "kind": "note", "count": 0}
+    assert body["denominations"][0] == {"id": notes[1000], "value": 1000, "kind": "note", "name": "1000",
+                                          "count": 0}
     assert {d["value"]: d["count"] for d in body["denominations"] if d["count"]} == {20: 2}
     assert body["expected_cash"] == 55 and body["safe_box_balance"] == 5
     assert body["discrepancy"] == {"amount": -10, "kind": "short", "reason": "Change"}
@@ -241,7 +242,7 @@ def test_rule_a_difference_needs_a_reason_on_save_next_but_not_on_save_exit(clie
 
     refused = _put(client, shop, "cash-count", {"counts": {notes[50]: 1}})
     assert refused.status_code == 422
-    assert refused.json() == {"error": "The count is HKD5.00 short. Add the reason to continue.",
+    assert refused.json() == {"error": "The count is HKD\u00a05.00 short. Add the reason to continue.",
                               "field": "discrepancy_reason"}
     assert _counts(draft) == {} and _history(draft) == []
 
@@ -259,7 +260,7 @@ def test_rule_a_single_cent_is_a_difference(client, shop, notes):
 
     resp = _put(client, shop, "cash-count", {"counts": {notes[50]: 1, notes[5]: 1}})
     assert resp.status_code == 422
-    assert resp.json()["error"] == "The count is HKD0.01 short. Add the reason to continue."
+    assert resp.json()["error"] == "The count is HKD\u00a00.01 short. Add the reason to continue."
 
     _put(client, shop, "cash-count", {"counts": {notes[50]: 1, notes[5]: 1}, "discrepancy_reason": "Rounding"})
     row = _row(draft)
@@ -383,3 +384,18 @@ def test_a_deposit_above_the_cash_on_hand_refuses_the_whole_save(client, shop, n
 
     assert resp.status_code == 422 and resp.json()["field"] == "bank_deposit"
     assert _counts(draft) == {}
+
+
+# How a refusal writes an amount (owner 2026-10-21): the code, a NON-BREAKING space, two places;
+# with no currency the number says so - "(No currency selected)" - never a "$".
+@pytest.mark.parametrize(("code", "value", "shown"), [
+    ("HKD", Decimal("1234.5"), "HKD\u00a01,234.50"),
+    ("HKD", Decimal("0.005"), "HKD\u00a00.01"),
+    (None, Decimal("155"), "155.00 (No currency selected)"),
+    ("", Decimal("12345678901.99"), "12,345,678,901.99 (No currency selected)"),
+])
+def test_money_in_a_refusal(monkeypatch, code, value, shown):
+    from petty_cash.services import cash
+
+    monkeypatch.setattr(cash, "currency_code", lambda entity_id: code)
+    assert cash._money(Report(entity_id=None), value) == shown
