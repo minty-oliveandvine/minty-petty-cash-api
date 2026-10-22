@@ -1,13 +1,21 @@
 import os
+from dataclasses import asdict
 from pathlib import Path
 
 from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
+from minty_shared.config import (
+    DEFAULT_LOCAL_DATABASE_URL,
+    DEFAULT_S3_REGION,
+    app_env,
+    database_url_from_env,
+    django_database,
+    parse_s3_url,
+    preview_origin_regexes,
+    require_secret_key,
+)
 from minty_shared.logctx import logging_config
-
-from config.dburl import database_url, parse_database_url
-from config.preview_origin import preview_origin_regexes
-from config.s3url import parse_s3_url
+from minty_shared.time import DEFAULT_ENTITY_TIMEZONE
 
 load_dotenv()
 
@@ -17,18 +25,18 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # service verifies (``core/auth.py``) through its login-gated ``/handoff/petty-cash-web``; this
 # service never mints one, and a mismatch 401s every request.
 _DEFAULT_SECRET_KEY = "change-me-in-production"
-SECRET_KEY = os.environ.get("SECRET_KEY", _DEFAULT_SECRET_KEY)
-# APP_ENV is ``development`` or ``production`` (the default); anything else is production.
-APP_ENV = os.environ.get("APP_ENV", "production").strip().lower()
+# APP_ENV is ``development`` or ``production``; anything else is production (minty_shared.config).
+APP_ENV = app_env()
 DEBUG = APP_ENV == "development"
 
 # Refuse to boot with the placeholder key outside development (the 2026-09-14 lesson: a
 # missing key answered 401 everywhere and said nothing - and the fallback is in the repo).
-if not DEBUG and SECRET_KEY == _DEFAULT_SECRET_KEY:
-    raise ImproperlyConfigured(
-        "SECRET_KEY is not set. It must be the same value the Flask app mints tokens "
-        "with; without it every request is refused with 401. Refusing to start."
+try:
+    SECRET_KEY = require_secret_key(
+        os.environ.get("SECRET_KEY"), placeholder=_DEFAULT_SECRET_KEY, development=DEBUG
     )
+except RuntimeError as exc:
+    raise ImproperlyConfigured(str(exc)) from None
 ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "*").split(",")
 
 # No django.contrib.auth / contenttypes: authentication is the bearer token (core.auth),
@@ -43,7 +51,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "core.middleware.NoStoreMiddleware",
-    "core.middleware.RequestLoggingMiddleware",
+    "minty_shared.django.middleware.RequestLoggingMiddleware",
     "django.middleware.common.CommonMiddleware",
 ]
 
@@ -79,17 +87,21 @@ CORS_ALLOWED_ORIGINS = [
     for origin in (os.environ.get("CORS_ALLOWED_ORIGINS") or PETTY_CASH_WEB_URL).split(",")
     if origin.strip()
 ]
-CORS_ALLOWED_ORIGIN_REGEXES = preview_origin_regexes(os.environ.get("PREVIEW_ORIGIN_REGEX"))
+# A branch's preview set (minty_shared.config); unset = off, a loose pattern refuses to boot.
+try:
+    CORS_ALLOWED_ORIGIN_REGEXES = preview_origin_regexes(os.environ.get("PREVIEW_ORIGIN_REGEX"))
+except ValueError as exc:
+    raise ImproperlyConfigured(str(exc)) from None
 CORS_ALLOW_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
 CORS_ALLOW_HEADERS = ["authorization", "content-type", "accept", "origin"]
 CORS_EXPOSE_HEADERS = ["Content-Disposition"]
 
 # ---------------------------------------------------------------------------
 # Database - the schema Minty owns. Every model is managed = False, no migrations; the schema
-# name is ``?schema=`` on DATABASE_URL (default pettycashv3, config/dburl.py), and every
+# name is ``?schema=`` on DATABASE_URL (default pettycashv3, minty_shared.config), and every
 # db_table is unqualified and resolves through search_path.
 # ---------------------------------------------------------------------------
-_DEFAULT_DB, DB_SCHEMA = parse_database_url(database_url())
+_DEFAULT_DB, DB_SCHEMA = django_database(database_url_from_env(DEFAULT_LOCAL_DATABASE_URL))
 DATABASES = {"default": _DEFAULT_DB}
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
@@ -98,12 +110,18 @@ USE_I18N = False
 USE_TZ = True
 TIME_ZONE = "UTC"
 #: The reporting day is Hong Kong's (Flask's ``models.db.tz``): "today" for the date rules.
-REPORT_TZ = "Asia/Hong_Kong"
+REPORT_TZ = DEFAULT_ENTITY_TIMEZONE
 
 # ---------------------------------------------------------------------------
 # Receipts - Backblaze B2 through the S3 API, one URL (``S3_URL``, Flask's).
 # ---------------------------------------------------------------------------
-S3 = parse_s3_url(os.environ.get("S3_URL"))
+# Unset (tests, a local run without receipts) is all-empty; set, it must be a whole URL.
+_S3_URL = (os.environ.get("S3_URL") or "").strip()
+S3 = (
+    asdict(parse_s3_url(_S3_URL))
+    if _S3_URL
+    else {"endpoint_url": "", "bucket": "", "key": "", "secret": "", "region": DEFAULT_S3_REGION}
+)
 #: The largest receipt an expense line takes (Flask's "PDF, JPEG, PNG (Max 10MB)").
 MAX_RECEIPT_BYTES = 10 * 1024 * 1024
 # Django refuses a multipart body over its own limit before a view sees it; the receipt rule
@@ -123,3 +141,7 @@ LOGGING = logging_config(
     no_propagate=["petty-cash-api.http"],
     level=os.environ.get("LOG_LEVEL", "INFO"),
 )
+# The access line (minty_shared.django.middleware): its logger, and the share link's secret
+# blanked before the path is logged.
+MINTY_HTTP_LOGGER = "petty-cash-api.http"
+MINTY_LOGGABLE_PATH = "core.middleware.loggable_path"

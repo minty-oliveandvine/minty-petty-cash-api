@@ -121,6 +121,16 @@ def currency_code(entity_id) -> str | None:
     return code.strip() if code else None
 
 
+def currency_places(entity_id) -> int:
+    """How many decimal places the company's currency has (JPY 0, HKD 2) - how an amount is
+    written; the arithmetic stays in cents. Two when there is no currency or no row."""
+    currency_id = Entity.objects.filter(id=entity_id).values_list("currency_id", flat=True).first()
+    places = None
+    if currency_id:
+        places = CurrencyInfo.objects.filter(id=currency_id).values_list("decimal_places", flat=True).first()
+    return int(places) if places is not None else 2
+
+
 def draft_payload(report: Report | None) -> dict | None:
     """The day's report as every step's page reads it (its badge and its stepper)."""
     if report is None:

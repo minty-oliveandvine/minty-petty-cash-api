@@ -54,7 +54,7 @@ def test_a_token_that_is_not_a_petty_cash_module_token_is_unauthorized(client, s
     resp = _get(client, shop.entity.id, headers(shop.owner.id, **token_kwargs))
 
     assert resp.status_code == 401
-    assert resp.json() == {"error": "unauthorized"}
+    assert resp.json() == {"error": "Unauthorized"}
     assert resp["Access-Control-Allow-Origin"] == WEB  # the app must SEE the 401 to re-authenticate
     assert resp["Cache-Control"] == "no-store"
 
@@ -62,7 +62,7 @@ def test_a_token_that_is_not_a_petty_cash_module_token_is_unauthorized(client, s
 def test_no_token_is_unauthorized(client, shop):
     resp = client.get(url(shop.entity.id), headers={"Origin": WEB})
 
-    assert resp.status_code == 401 and resp.json() == {"error": "unauthorized"}
+    assert resp.status_code == 401 and resp.json() == {"error": "Unauthorized"}
 
 
 def test_an_unknown_or_unapproved_person_is_unauthorized(client, shop):

@@ -140,8 +140,8 @@ def test_rule_a_deposit_above_the_cash_on_hand_is_a_422_on_the_field(client, sho
     resp = _put(client, shop, "deposit", {"bank_deposit": 155.01})
 
     assert resp.status_code == 422
-    assert resp.json() == {"error": "The deposit can't be more than the cash on hand. Enter HKD\u00a0155.00 or less.",
-                           "field": "bank_deposit"}
+    message = "The deposit can't be more than the cash on hand. Enter HKD\u00a0155.00 or less."
+    assert resp.json() == {"error": message, "field": "bank_deposit", "fields": {"bank_deposit": message}}
     assert _row(draft).bank_deposit == 0 and _history(draft) == []
 
 
@@ -242,8 +242,8 @@ def test_rule_a_difference_needs_a_reason_on_save_next_but_not_on_save_exit(clie
 
     refused = _put(client, shop, "cash-count", {"counts": {notes[50]: 1}})
     assert refused.status_code == 422
-    assert refused.json() == {"error": "The count is HKD\u00a05.00 short. Add the reason to continue.",
-                              "field": "discrepancy_reason"}
+    message = "The count is HKD\u00a05.00 short. Add the reason to continue."
+    assert refused.json() == {"error": message, "field": "discrepancy_reason", "fields": {"discrepancy_reason": message}}
     assert _counts(draft) == {} and _history(draft) == []
 
     kept = _put(client, shop, "cash-count", {"counts": {notes[50]: 1}, "action": "exit"})
@@ -398,4 +398,17 @@ def test_money_in_a_refusal(monkeypatch, code, value, shown):
     from petty_cash.services import cash
 
     monkeypatch.setattr(cash, "currency_code", lambda entity_id: code)
+    assert cash._money(Report(entity_id=None), value) == shown
+
+
+# The currency's own places (owner 2026-10-21), not a fixed two: a zero-decimal currency shows none.
+@pytest.mark.parametrize(("code", "places", "value", "shown"), [
+    ("JPY", 0, Decimal("1200"), "JPY\u00a01,200"),
+    ("HKD", 2, Decimal("1200"), "HKD\u00a01,200.00"),
+])
+def test_money_in_a_refusal_has_the_currencys_places(monkeypatch, code, places, value, shown):
+    from petty_cash.services import cash
+
+    monkeypatch.setattr(cash, "currency_code", lambda entity_id: code)
+    monkeypatch.setattr(cash, "currency_places", lambda entity_id: places, raising=False)
     assert cash._money(Report(entity_id=None), value) == shown

@@ -26,7 +26,7 @@ from dataclasses import dataclass
 
 import jwt
 from django.conf import settings
-from minty_shared import logctx
+from minty_shared import logctx, tokens
 from ninja.security import HttpBearer
 
 from core.entitlements import is_module_enabled
@@ -39,8 +39,6 @@ logger = logging.getLogger("petty-cash-api")
 
 #: The ``module`` claim on a module token (Flask's ``entity/routes/modules.py::MODULE_TOKEN_CLAIM``).
 MODULE_TOKEN_CLAIM = "billing"
-#: Seconds of clock disagreement tolerated with the minting host, as the other Django APIs allow.
-CLOCK_SKEW_LEEWAY_SECONDS = 60
 
 NO_COMPANY = "You don't have access to that company."
 ONBOARDING = "This company is still setting up. Finish setting it up to use Petty Cash."
@@ -94,9 +92,8 @@ def company_for(user: User, entity_id) -> Company | None:
 class PettyCashBearerAuth(HttpBearer):
     def authenticate(self, request, token):
         try:
-            claims = jwt.decode(
-                token, settings.SECRET_KEY, algorithms=["HS256"], leeway=CLOCK_SKEW_LEEWAY_SECONDS
-            )
+            # HS256 with the clock skew every Minty backend allows (minty_shared.tokens).
+            claims = tokens.decode_bearer(token, settings.SECRET_KEY)
         except jwt.PyJWTError as exc:
             logger.info("Petty Cash API: token refused (%s)", type(exc).__name__)
             return None

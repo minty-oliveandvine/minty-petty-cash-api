@@ -293,7 +293,7 @@ def test_fixed_a_failure_during_submit_leaves_the_draft_as_it_was(client, shop, 
     resp = _submit(client, shop)
 
     assert resp.status_code == 500
-    assert resp.json() == {"error": "Something went wrong on our side. Please try again."}
+    assert resp.json() == {"error": "Something went wrong on my end. Mind trying again?"}
     row = _row(report)
     assert row.status == "draft" and row.closing_balance == 55 and row.completed_sections == ALL
     assert row.submitted_at is None

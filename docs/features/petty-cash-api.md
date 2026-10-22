@@ -22,15 +22,15 @@ Every route is under `/api/petty-cash/v1/companies/{entity_id}`. The company com
 | Check | Refusal |
 |---|---|
 | A preflight | answered by django-cors-headers (`200` - Flask answered `204`), no token needed |
-| A valid HS256 token (the shared `SECRET_KEY`, 60 s clock leeway) carrying `module == "billing"` (Flask's `MODULE_TOKEN_CLAIM`) and a `user_id` | `401 {"error": "unauthorized"}` |
+| A valid HS256 token (the shared `SECRET_KEY`, 60 s clock leeway) carrying `module == "billing"` (Flask's `MODULE_TOKEN_CLAIM`) and a `user_id` | `401 {"error": "Unauthorized"}` |
 | The person exists and is `approved` | `401` |
 | Membership (an approved `user_entity` row), or a system superuser. A stranger, an unknown id and a malformed id all get the same answer. | `403` "You don't have access to that company." |
 | The company is past onboarding | `409` "This company is still setting up. Finish setting it up to use Petty Cash." |
 | Petty Cash is on (`core/entitlements.py`, every unknown answers no) | `403` "Petty Cash isn't switched on for this company. An admin can turn it on in the company's modules." |
 
-**Responses** (`core/exceptions.py`, `core/middleware.py`): always JSON. A refusal is `{"error": "<sentence>"}` - a sentence the app shows as it stands - sometimes with `to`, `field` or `report_id` the app routes on. `unauthorized` sends the app back through Flask's hand-off. A 500 says "Something went wrong on our side. Please try again." and the detail goes to the log only. An unknown path is a JSON `404`. Every response is `Cache-Control: no-store`.
+**Responses** (`core/exceptions.py`, rendered by every API's envelope, `minty_shared.django.errors`): always JSON. A refusal is `{"error": "<sentence>"}` - a sentence the app shows as it stands - sometimes with `to`, `field` or `report_id` the app routes on; a refusal about one input also names it in `fields` (`{"<field>": "<sentence>"}`), and input the schema refuses is a `422` with `fields` for each. A `401` (`Unauthorized`) sends the app back through Flask's hand-off. A 500 says the house sentence, "Something went wrong on my end. Mind trying again?", and the detail goes to the log only. An unknown path is a JSON `404`. Every response is `Cache-Control: no-store`.
 
-**CORS**: `PETTY_CASH_WEB_URL` (default `http://localhost:3010`; `CORS_ALLOWED_ORIGINS` overrides) and a `pettycash` preview set where `PREVIEW_ORIGIN_REGEX` allows it (`config/preview_origin.py`, refuses to boot on a pattern that could match other hosts); methods `GET, POST, PUT, PATCH, DELETE, OPTIONS`; headers `authorization, content-type` (no `x-entity-id`). Refusals carry CORS too, so the app can see its 401.
+**CORS**: `PETTY_CASH_WEB_URL` (default `http://localhost:3010`; `CORS_ALLOWED_ORIGINS` overrides) and a `pettycash` preview set where `PREVIEW_ORIGIN_REGEX` allows it (`minty_shared.config`, refuses to boot on a pattern that could match other hosts); methods `GET, POST, PUT, PATCH, DELETE, OPTIONS`; headers `authorization, content-type` (no `x-entity-id`). Refusals carry CORS too, so the app can see its 401.
 
 ## Endpoints
 

@@ -20,12 +20,10 @@ assertion signed with the shared ``SECRET_KEY`` whose claims - never the body - 
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime, timedelta
 
-import jwt
 import requests
 from django.conf import settings
-from minty_shared import logctx
+from minty_shared import tokens
 
 logger = logging.getLogger("petty-cash-api")
 
@@ -38,15 +36,14 @@ UNCONFIRMED = "I couldn't confirm the deposit correction. Check the day on the d
 
 
 def service_assertion(scope: str, entity_id, **claims) -> str:
-    now = datetime.now(UTC)
-    payload = {"scope": scope, "entity_id": str(entity_id), "iat": now, "exp": now + timedelta(seconds=60), **claims}
-    return jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
+    """A 60 s assertion for one of Flask's internal routes (``minty_shared.tokens``)."""
+    return tokens.service_assertion(settings.SECRET_KEY, scope, entity_id, **claims)
 
 
 def assertion_headers(assertion: str) -> dict[str, str]:
-    """The headers of every call to Flask: the assertion, and the request's trace
-    (``minty_shared.logctx``) so both services' lines for it share one id."""
-    return {"Authorization": f"Bearer {assertion}", **logctx.outgoing_headers()}
+    """The headers of every call to Flask: the assertion, and the request's trace, so both
+    services' lines for it share one id (``minty_shared.tokens``)."""
+    return tokens.assertion_headers(assertion)
 
 
 def _forward(what: str, path: str, scope: str, timeout, unconfirmed: str, entity_id, user_id, body) -> tuple[dict, int]:

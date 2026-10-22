@@ -4,7 +4,8 @@ import os
 # below, after the import that would otherwise trip the guard.
 os.environ.setdefault("APP_ENV", "development")
 
-from config.dburl import parse_database_url  # noqa: E402
+from minty_shared.config import django_database  # noqa: E402
+
 from config.settings import *  # noqa: E402, F401, F403
 
 # A fixed key so tests can mint the module token Flask would. Nothing about the value matters
@@ -23,7 +24,7 @@ if _PG_URI:
     from urllib.parse import parse_qs as _parse_qs
     from urllib.parse import urlsplit as _urlsplit
 
-    _db, _schema = parse_database_url(_PG_URI)
+    _db, _schema = django_database(_PG_URI)
     if "schema" in _parse_qs(_urlsplit(_PG_URI).query):
         DB_SCHEMA = _schema
     _db["OPTIONS"]["options"] = f"-c search_path={DB_SCHEMA},public"  # noqa: F405

@@ -217,7 +217,7 @@ def test_a_failure_is_a_generic_500_and_the_secret_never_reaches_the_log(shared,
     with caplog.at_level(logging.DEBUG):
         resp = _read(path)
 
-    assert (resp.status_code, resp.json()) == (500, {"error": "Something went wrong on our side. Please try again."})
+    assert (resp.status_code, resp.json()) == (500, {"error": "Something went wrong on my end. Mind trying again?"})
     assert "public share failure: RuntimeError" in caplog.text
     assert secret not in caplog.text
 

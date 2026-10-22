@@ -244,7 +244,7 @@ def test_a_failed_save_leaves_no_receipt_behind(client, shop, lists, s3, monkeyp
     resp = _add(client, shop)
 
     assert resp.status_code == 500
-    assert resp.json() == {"error": "Something went wrong on our side. Please try again."}
+    assert resp.json() == {"error": "Something went wrong on my end. Mind trying again?"}
     assert s3.objects == {} and len(s3.deleted) == 1
     assert not ReportExpense.objects.exists()
 

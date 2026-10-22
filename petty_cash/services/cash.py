@@ -18,10 +18,16 @@ from __future__ import annotations
 from decimal import Decimal
 
 from django.db import transaction
+from minty_shared import money as shared_money
 
 from petty_cash.money import cents
 from petty_cash.services.denominations import denominations_for, save_counts
-from petty_cash.services.reports import currency_code, log_history, update_draft_progress
+from petty_cash.services.reports import (
+    currency_code,
+    currency_places,
+    log_history,
+    update_draft_progress,
+)
 from petty_cash.services.sales import cash_sales_from_detail
 from shared_models.enums import ReportStatus
 from shared_models.models import Report
@@ -44,12 +50,13 @@ class CashRefused(Exception):
 
 
 def _money(report: Report, value: Decimal) -> str:
-    """``HKD 1,234.50`` - the company's code, a NON-BREAKING space (so a line never splits them), two
-    places (owner, 2026-10-21: as every app writes an amount). With no currency the number says so,
-    never a silent "$": ``155.00 (No currency selected)``."""
-    code = currency_code(report.entity_id)
-    amount = f"{cents(value):,.2f}"
-    return f"{code}\u00a0{amount}" if code else f"{amount} (No currency selected)"
+    """``HKD 1,234.50`` - the company's code, a NON-BREAKING space, the currency's own places
+    (owner, 2026-10-21; ``minty_shared.money``). With no currency the number says so, never a
+    silent "$": ``155.00 (No currency selected)``. Rounded to the cent first, as every figure
+    here is."""
+    return shared_money.format_amount(
+        currency_code(report.entity_id), cents(value), currency_places(report.entity_id)
+    )
 
 
 def cash_on_hand(report: Report) -> Decimal:
