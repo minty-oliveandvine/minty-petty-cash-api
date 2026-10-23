@@ -42,6 +42,9 @@ from petty_cash.services.reports import (
 
 router = Router()
 
+# Owner 2026-10-21: never a silent "$" - a company with no currency picks one before any report.
+NO_CURRENCY = "No currency is selected for this company. Choose one in Petty Cash Settings to start a report."
+
 
 def opening_payload(entity_id, selected) -> dict:
     state = opening_state(entity_id, selected)
@@ -92,6 +95,8 @@ def save_opening_step(request):
     save = _valid_save(json_body(request))
     day = save["day"]
 
+    if not currency_code(entity_id):
+        raise Refused(NO_CURRENCY, 409, to="dashboard")
     problem = new_report_date_problem(entity_id, day)
     if problem:
         raise Refused(problem, 409, to="dashboard")

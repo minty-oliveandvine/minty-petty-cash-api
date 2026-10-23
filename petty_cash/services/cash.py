@@ -44,8 +44,12 @@ class CashRefused(Exception):
 
 
 def _money(report: Report, value: Decimal) -> str:
-    """``HKD1,234.50`` - the company's currency code, as every amount on the pages is written."""
-    return f"{currency_code(report.entity_id) or '$'}{cents(value):,.2f}"
+    """``HKD 1,234.50`` - the company's code, a NON-BREAKING space (so a line never splits them), two
+    places (owner, 2026-10-21: as every app writes an amount). With no currency the number says so,
+    never a silent "$": ``155.00 (No currency selected)``."""
+    code = currency_code(report.entity_id)
+    amount = f"{cents(value):,.2f}"
+    return f"{code}\u00a0{amount}" if code else f"{amount} (No currency selected)"
 
 
 def cash_on_hand(report: Report) -> Decimal:
