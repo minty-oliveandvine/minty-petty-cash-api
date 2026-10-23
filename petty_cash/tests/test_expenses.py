@@ -504,3 +504,35 @@ def test_a_failed_edit_leaves_the_new_receipt_out_and_the_old_one_kept(client, s
     assert list(s3.objects) == [attachment.file_path] and len(s3.deleted) == 1
     assert ReportExpense.objects.get(id=line.id).amount == Decimal("10.00")
     assert ReportExpenseAttachment.objects.get(report_expense_id=line.id).attachment_id == attachment.id
+
+
+# --- a contact created while adding a line -------------------------------------------------------
+
+
+def test_a_contact_created_on_the_expenses_step_is_saved_and_carried_by_the_new_line(
+        client, shop, lists, s3, monkeypatch):
+    """The web app's flow: POST /suppliers, then add the line with the id it answered. The new
+    contact is a xero_contact_sync row, the line points at it, and the step lists it after."""
+    from petty_cash.tests.test_suppliers import ORG, FakeHttp
+    from shared_models.models import Entity
+
+    fake = FakeHttp()
+    monkeypatch.setattr("requests.post", fake.post)
+    Entity.objects.filter(id=shop.entity.id).update(xero_org_id=ORG)
+    draft = _draft(shop)
+
+    made = client.post(url(shop.entity.id, "/suppliers"), {"name": "Corner Bakery"},
+                       content_type="application/json", headers=headers(shop.owner.id))
+    assert made.status_code == 201, made.content
+    assert made.json() == {"id": "con-new", "name": "Corner Bakery"}
+    saved = XeroContactSync.objects.get(entity_id=shop.entity.id, xero_contact_id="con-new")
+    assert (saved.name, saved.xero_org_id) == ("Corner Bakery", ORG)
+
+    added = _add(client, shop, supplier_id=made.json()["id"])
+    assert added.status_code in (200, 201), added.content
+
+    [line] = ReportExpense.objects.filter(report_id=draft.id)
+    assert line.contact_id == saved.id
+    page = _get(client, shop).json()
+    assert {"id": "con-new", "name": "Corner Bakery"} in page["suppliers"]
+    assert page["lines"][0]["supplier"] == {"id": "con-new", "name": "Corner Bakery"}
