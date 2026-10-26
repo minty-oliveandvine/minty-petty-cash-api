@@ -57,6 +57,28 @@ Every route is under `/api/petty-cash/v1/companies/{entity_id}`. The company com
 
 Each row's request, answer and refusals are Flask's, as its `docs/features/petty-cash-api.md` lists them; this table is updated as each router lands.
 
+## Stale drafts (owner, 2026-10-26)
+
+A **stale draft** is a draft dated before the company's last submitted report
+(`services/reports.py`: `live_drafts`, `is_stale_draft`). Days go in order, so it can never be
+finished, and it used to block the company for good: any draft hid Start New Report and sent
+Continue to its old date (Dine at Venus, 2026-10-20).
+- **`GET /home`:** `draft` and `draft_date` come from live drafts only. Opening's no-date
+  fallback (the latest draft of the last 7 days) ignores stale drafts too.
+- **`POST /reports/submit`** refuses one with 409, `to: "dashboard"`: "This draft is for {day},
+  before your last submitted report ({last}). Days go in order, so it can't be submitted - delete
+  it from Report History." The close read shows the same `problem`.
+- **`DELETE /reports/{id}`** accepts one even though it is not the latest report (same
+  permissions: own = cashier and up, anyone's = shop manager and up). It leaves the previous
+  report's `next_transaction_date` alone, since the sequence has moved past it. The Daily Report
+  and the history row say `delete: true` for it. A non-latest *submitted* report is still
+  refused.
+- **Deliberately different from Flask**, whose `entity/services/dashboard.py` still counts every
+  draft. Only the unused `petty_cash_api` blueprint reads it, so `scripts/parity.py` would show a
+  `/home` DIFF for a company that has a stale draft.
+- Tests: `test_home.py`, `test_opening.py`, `test_close.py`, `test_report.py`, `test_history.py`
+  (the "stale" cases).
+
 ## What this service writes
 
 The day's report and what hangs off it - `report`, `share_link`, and on delete `xero_report_sync`, `xero_bank_transfer`, `xero_bank_transaction`, `report_sale`, `report_expense`, `attachment`, `report_expense_attachment`, `report_cash_count`, `report_history` - plus `entity_cash_detail` on submit, a `xero_contact_sync` row for a new supplier, and from Settings `entities` (country, currency, `currency_format`), `entity_cash_setting`, `entity_sale_setting` and new `sale_info` catalogue rows. Everything else is read-only (`shared_models/models.py`). Deliberately not copied from Flask: the denomination resolver's write of a company's order onto the shared `cash_info` rows, and `log_history`'s separate commit that swallowed errors.

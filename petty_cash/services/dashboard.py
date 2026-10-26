@@ -3,7 +3,9 @@
 
 Kept as Flask has it, quirks included: the "latest report" includes drafts; the Continue card
 reads the NEWEST draft while the calendar's floor is the EARLIEST draft's date; "published"
-means anything not a draft. One deliberate difference: Flask's "today" for "today's report is
+means anything not a draft. One fix Flask lacks (2026-10-26): only LIVE drafts count - a stale
+draft, dated before the last submitted day, used to hide Start New Report for good
+(``reports.live_drafts``). One deliberate difference: Flask's "today" for "today's report is
 submitted" was the SERVER's local date (UTC on Render, so wrong for a Hong Kong morning) while
 its date rules used Hong Kong's; here both are Hong Kong's (``petty_cash/days.py``).
 """
@@ -15,7 +17,7 @@ from datetime import UTC, datetime
 from django.db.models import Count, Min
 
 from petty_cash.days import today
-from petty_cash.services.reports import first_report_defaults
+from petty_cash.services.reports import first_report_defaults, live_drafts
 from petty_cash.services.xero_settings import account_for_role, missing_slots
 from shared_models.enums import ReportStatus
 from shared_models.models import CurrencyInfo, Entity, Report, User, UserEntity
@@ -65,7 +67,7 @@ def dashboard_state(entity_id: str) -> dict:
             ]
             latest["can_correct_deposit"] = not latest["deposit_correction_missing_settings"]
 
-    drafts = reports.filter(status=ReportStatus.DRAFT)
+    drafts = live_drafts(entity_id)
     current_draft = drafts.order_by("-transaction_date").first()
     earliest_draft_date = drafts.aggregate(first=Min("transaction_date"))["first"]
     draft = None

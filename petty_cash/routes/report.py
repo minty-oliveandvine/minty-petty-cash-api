@@ -58,7 +58,7 @@ from petty_cash.services.report_edits import (
     may_edit_details,
 )
 from petty_cash.services.report_page import cash_summary, report_facts, report_status
-from petty_cash.services.reports import currency_code
+from petty_cash.services.reports import currency_code, is_stale_draft
 from petty_cash.services.sales import cash_sales_from_detail, report_methods
 from petty_cash.services.share import ShareRefused, create_share_link
 from shared_models.enums import ReportStatus
@@ -154,7 +154,8 @@ def report_payload(request, report: Report) -> dict:
         "closing_balance": figures["closing_balance"],
         "permissions": {
             "edit": status != "draft" and latest and has_permission(user, Permission.REPORT_EDIT_OWN, entity_id),
-            "delete": latest and can_delete_report(user, report),
+            # a stale draft (dated before the last submitted day) may go though it is not the latest
+            "delete": (latest or is_stale_draft(report)) and can_delete_report(user, report),
             "publish": has_permission(user, Permission.REPORT_PUBLISH, entity_id),
             "share": status != "draft",
             "edit_details": edit_details,

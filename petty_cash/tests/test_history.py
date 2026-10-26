@@ -195,3 +195,13 @@ def test_another_companys_history_is_refused_at_the_door(client, shop, flask):
     resp = client.get(url(theirs.id, "/reports"), headers=headers(shop.owner.id))
 
     assert resp.status_code == 403
+
+
+def test_a_stale_draft_in_the_history_may_be_deleted(client, shop, flask):
+    """A draft dated before the last submitted day: never the latest, yet deletable (2026-10-26)."""
+    _older(shop, days_back=0)
+    stale = _older(shop, days_back=4, status="draft", current_section="sales")
+
+    rows = {r["id"]: r for r in _get(client, shop).json()["reports"]}
+
+    assert rows[str(stale.id)]["permissions"] == {"edit": False, "delete": True}

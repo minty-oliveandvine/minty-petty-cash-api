@@ -22,6 +22,7 @@ from petty_cash.services.reports import (
     first_report_defaults,
     future_date_error,
     last_submitted,
+    live_drafts,
     log_history,
     previous_report,
     submitted_report_for,
@@ -93,15 +94,13 @@ def _safebox(report) -> Decimal:
 
 def opening_state(entity_id, selected_date) -> dict:
     """What the Opening page shows for a day: the day's draft when there is one, else what the day
-    opens from. With no ``selected_date`` the latest draft of the last 7 days stands in."""
+    opens from. With no ``selected_date`` the latest LIVE draft of the last 7 days stands in (a
+    stale one, dated before the last submitted day, never does)."""
     draft = find_draft(entity_id, selected_date) if selected_date else None
     if draft is None and not selected_date:
         draft = (
-            Report.objects.filter(
-                entity_id=entity_id,
-                status=ReportStatus.DRAFT,
-                transaction_date__gte=today() - timedelta(days=7),
-            )
+            live_drafts(entity_id)
+            .filter(transaction_date__gte=today() - timedelta(days=7))
             .order_by("-transaction_date")
             .first()
         )

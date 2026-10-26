@@ -356,3 +356,47 @@ def test_a_name_without_latin_letters_is_prefixed_report(client, shop, notes):
     _post(client, shop, report.id, "/share-link")
 
     assert ShareLink.objects.get(entity_id=shop.entity.id).path_segment.startswith("Report/")
+
+
+# --- stale drafts (2026-10-26) -------------------------------------------------------------------------
+
+
+def _stale_draft(shop, **fields) -> Report:
+    """A draft dated before the last submitted day: it can never be finished in order."""
+    return make_report(shop.entity, D3 - timedelta(days=5), status="draft", created_by=shop.owner.id, **fields)
+
+
+def test_a_stale_draft_may_be_deleted_though_newer_reports_exist(client, shop, notes, deleted_files,
+                                                                django_capture_on_commit_callbacks):
+    before = make_report(shop.entity, D3 - timedelta(days=6), created_by=shop.owner.id, closing_balance=10,
+                         next_transaction_date=D3 - timedelta(days=5))
+    stale = _stale_draft(shop)
+    _submitted(client, shop, notes)
+
+    assert _get(client, shop, stale.id).json()["permissions"]["delete"] is True
+    with django_capture_on_commit_callbacks(execute=True):
+        resp = _delete(client, shop, stale.id)
+
+    assert resp.status_code == 200, resp.content
+    assert not Report.objects.filter(id=stale.id).exists()
+    # the report before it keeps its link: the sequence moved on past the stale day
+    assert Report.objects.get(id=before.id).next_transaction_date == D3 - timedelta(days=5)
+
+
+def test_a_cashier_deletes_their_own_stale_draft_but_not_someone_elses(client, shop, notes):
+    cashier = make_user("cashier@test.com")
+    UserEntity.objects.create(user_id=cashier.id, entity_id=shop.entity.id, role=EntityRole.CASHIER, approved=True)
+    _submitted(client, shop, notes)
+    theirs = _stale_draft(shop)
+    mine = make_report(shop.entity, D3 - timedelta(days=7), status="draft", created_by=cashier.id)
+
+    assert _delete(client, shop, theirs.id, user=cashier).status_code == 403
+    assert _delete(client, shop, mine.id, user=cashier).status_code == 200
+
+
+def test_an_older_submitted_report_still_cannot_be_deleted(client, shop, notes):
+    older = _older(shop)
+    _submitted(client, shop, notes)
+
+    assert _get(client, shop, older.id).json()["permissions"]["delete"] is False
+    assert _delete(client, shop, older.id).status_code == 400
