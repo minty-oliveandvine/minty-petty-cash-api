@@ -30,7 +30,7 @@ from petty_cash.services import report_csv
 from petty_cash.services.history import STATUS_FILTERS, report_history
 from petty_cash.services.report_actions import was_published
 from petty_cash.services.report_page import report_status
-from petty_cash.services.reports import currency_code
+from petty_cash.services.reports import currency_code, last_submitted
 from shared_models.enums import ReportStatus
 
 router = Router()
@@ -89,11 +89,13 @@ def history(request):
             raise Refused(NO_REASONS, 503) from None
     may_edit = has_permission(person, Permission.REPORT_EDIT_OWN, entity_id)
     latest_id = data["latest_report_id"]
+    last = last_submitted(entity_id)  # a draft dated before it is stale: deletable, never latest
 
     rows = []
     for report in data["reports"]:
         draft = report.status == ReportStatus.DRAFT
         latest = str(report.id) == latest_id
+        stale = draft and last is not None and report.transaction_date < last.transaction_date
         label, tone = report_status(report)
         rows.append({
             "id": str(report.id),
@@ -116,7 +118,7 @@ def history(request):
             "publish_reasons": reasons.get(str(report.id), []),
             "permissions": {
                 "edit": latest and not draft and may_edit,
-                "delete": latest and not draft and can_delete_report(person, report),
+                "delete": ((latest and not draft) or stale) and can_delete_report(person, report),
             },
         })
     return {

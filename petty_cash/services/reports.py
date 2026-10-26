@@ -47,6 +47,25 @@ def last_submitted(entity_id, before=None) -> Report | None:
     return reports.order_by("-transaction_date").first()
 
 
+def live_drafts(entity_id):
+    """The company's drafts that can still be finished: those dated after its last submitted day
+    (all of them while nothing is submitted). A draft dated before it is STALE - days go in order,
+    so it can never be submitted - and it must not take over the dashboard or Opening (a stale
+    draft hid Start New Report and blocked Dine at Venus, 2026-10-20)."""
+    drafts = Report.objects.filter(entity_id=entity_id, status=ReportStatus.DRAFT)
+    last = last_submitted(entity_id)
+    return drafts.filter(transaction_date__gt=last.transaction_date) if last else drafts
+
+
+def is_stale_draft(report: Report) -> bool:
+    """A draft dated before the company's last submitted day (see ``live_drafts``): it may be
+    deleted though it is not the latest report, and it is never submitted."""
+    if report.status != ReportStatus.DRAFT:
+        return False
+    last = last_submitted(report.entity_id)
+    return last is not None and report.transaction_date < last.transaction_date
+
+
 def previous_report(entity_id, before) -> Report | None:
     """The report just before ``before``, WHATEVER its status."""
     return Report.objects.filter(entity_id=entity_id, transaction_date__lt=before).order_by("-transaction_date").first()

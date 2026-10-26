@@ -340,3 +340,17 @@ def test_the_outcome_of_another_companys_or_an_unknown_report_is_404(client, sho
     for report_id in (uuid.uuid4(), "not-a-uuid", theirs.id):
         resp = _outcome(client, shop, report_id)
         assert resp.status_code == 404 and resp.json() == {"error": "Hmm, I couldn't find that report."}
+
+
+def test_a_stale_draft_cannot_be_submitted_out_of_order(client, shop, notes):
+    """A draft dated before the last submitted day would fill a past day out of sequence."""
+    stale_day = D3 - timedelta(days=3)
+    report = _ready(shop, notes, day=stale_day)
+    make_report(shop.entity, D3 - timedelta(days=1), created_by=shop.owner.id, closing_balance=55)
+
+    resp = _submit(client, shop, day=stale_day)
+
+    assert resp.status_code == 409 and resp.json()["to"] == "dashboard"
+    assert "before your last submitted report" in resp.json()["error"]
+    assert _row(report).status == "draft"
+    assert _close(client, shop, day=stale_day).json()["problem"]["to"] == "dashboard"

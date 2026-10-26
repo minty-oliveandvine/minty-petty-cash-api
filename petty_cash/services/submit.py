@@ -24,7 +24,7 @@ from django.db import transaction
 from petty_cash.money import cents
 from petty_cash.services.cash import NEGATIVE, difference, expected_cash
 from petty_cash.services.denominations import refresh_cash_stock
-from petty_cash.services.reports import actual_cash_total, future_date_error
+from petty_cash.services.reports import actual_cash_total, future_date_error, last_submitted
 from petty_cash.services.sales import cash_sales_from_detail
 from shared_models.enums import ReportStatus
 from shared_models.models import Report, ReportExpense
@@ -66,6 +66,15 @@ def closing_at_submit(report: Report) -> Decimal:
 def _check(report: Report) -> None:
     if report.status != ReportStatus.DRAFT:
         raise SubmitRefused(ALREADY_SUBMITTED, "submitted")
+    # A stale draft (reports.live_drafts): days go in order, so this one would fill a past day.
+    last = last_submitted(report.entity_id)
+    if last is not None and report.transaction_date < last.transaction_date:
+        raise SubmitRefused(
+            f"This draft is for {report.transaction_date}, before your last submitted report "
+            f"({last.transaction_date}). Days go in order, so it can't be submitted - delete it from "
+            "Report History.",
+            "dashboard",
+        )
     done = set(report.completed_sections or [])
     missing = [s for s in REQUIRED if s not in done]
     if missing:

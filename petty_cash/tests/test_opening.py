@@ -245,3 +245,29 @@ def test_a_first_report_before_the_onboarding_start_is_a_409(client, shop):
 
     assert resp.status_code == 409
     assert resp.json() == {"error": f"Transaction date must be on or after your onboarding date ({D2}).", "to": "dashboard"}
+
+
+# --- no date: the latest draft of the last 7 days stands in ------------------------------------------
+
+
+def _get_undated(client, shop):
+    return client.get(url(shop.entity.id, "/reports/opening"), headers=headers(shop.owner.id))
+
+
+def test_with_no_date_the_recent_draft_is_opened(client, shop):
+    make_report(shop.entity, D2, created_by=shop.owner.id, closing_balance=120)
+    draft = make_report(shop.entity, D3, status="draft", opening_balance=120, completed_sections=["opening"])
+
+    page = _get_undated(client, shop).json()
+
+    assert page["transaction_date"] == D3.isoformat() and page["draft"]["id"] == str(draft.id)
+
+
+def test_with_no_date_a_stale_draft_is_passed_over_for_the_next_day(client, shop):
+    make_report(shop.entity, D2, created_by=shop.owner.id, closing_balance=120)
+    make_report(shop.entity, D1, status="draft", opening_balance=5)  # before the last submitted day
+
+    page = _get_undated(client, shop).json()
+
+    assert page["draft"] is None
+    assert page["transaction_date"] == D3.isoformat() and page["starting_cash_balance"] == 120.0

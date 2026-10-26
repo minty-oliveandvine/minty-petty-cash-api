@@ -22,6 +22,7 @@ from django.db import transaction
 from core.policy import Permission, can_delete_report, has_permission
 from petty_cash.files import storage
 from petty_cash.services.denominations import refresh_cash_stock
+from petty_cash.services.reports import is_stale_draft
 from shared_models.enums import ReportStatus
 from shared_models.models import (
     Attachment,
@@ -95,11 +96,15 @@ def delete_report(report: Report, user) -> None:
             raise ReportActionRefused(
                 "Xero is still publishing this report. Wait until it finishes before deleting it.", 409
             )
-        if newer_exists(locked):
+        # A stale draft (dated before the last submitted day) may go though it is not the latest:
+        # nothing can finish it, and nothing after it depends on it (owner, 2026-10-26).
+        stale = is_stale_draft(locked)
+        if newer_exists(locked) and not stale:
             raise ReportActionRefused(NEWER_DELETE, 400)
 
         report_id, entity_id = locked.id, locked.entity_id
-        _clear_previous_next_date(locked)
+        if not stale:  # the sequence has moved on past a stale day: the report before keeps its link
+            _clear_previous_next_date(locked)
 
         line_ids = list(ReportExpense.objects.filter(report_id=report_id).values_list("id", flat=True))
         attachment_ids = list(

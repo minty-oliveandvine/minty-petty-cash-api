@@ -153,3 +153,30 @@ def test_the_user_count_is_the_companys_approved_members(client, shop):
     _member(shop, "pending@test.com", approved=False)
 
     assert _home(client, shop)["user_count"] == 2  # the owner and the cashier
+
+
+# --- stale drafts (2026-10-26) -------------------------------------------------------------------------
+# A draft dated before the last submitted day can never be finished in order. It used to hide Start New
+# Report and send Continue to its old date, blocking the company (Dine at Venus, 2026-10-20).
+
+
+def test_a_draft_older_than_the_last_submitted_day_is_not_the_days_draft(client, shop):
+    yesterday = TODAY - timedelta(days=1)
+    make_report(shop.entity, yesterday, created_by=shop.owner.id, closing_balance=120)
+    make_report(shop.entity, TODAY - timedelta(days=9), status="draft", current_section="sales")
+
+    home = _home(client, shop)
+
+    assert home["draft"] is None and home["draft_date"] is None
+    assert home["latest"]["date"] == yesterday.isoformat()
+
+
+def test_a_stale_draft_beside_todays_draft_leaves_todays_in_charge(client, shop):
+    make_report(shop.entity, TODAY - timedelta(days=1), created_by=shop.owner.id, closing_balance=120)
+    make_report(shop.entity, TODAY - timedelta(days=9), status="draft")
+    current = make_report(shop.entity, TODAY, status="draft", current_section="sales")
+
+    home = _home(client, shop)
+
+    assert home["draft"]["id"] == current.id
+    assert home["draft_date"] == TODAY.isoformat()
