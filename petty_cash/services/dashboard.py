@@ -38,9 +38,12 @@ def dashboard_state(entity_id: str) -> dict:
     reports = Report.objects.filter(entity_id=entity_id)
 
     latest_report = reports.order_by("-transaction_date").first()
+    opening, start_date = first_report_defaults(entity_id)
     latest = {
         "date": None,
-        "closing_balance": 0,
+        # Before the first report the drawer holds onboarding's opening balance (0 without
+        # one), not nothing (2026-10-27 copy test: a new company read 0.00 at HKD 5,525.00).
+        "closing_balance": opening,
         "deposit": 0,
         "deposit_bank_name": "No deposit",
         "deposit_bank_number": "",
@@ -122,7 +125,7 @@ def dashboard_state(entity_id: str) -> dict:
         "draft": draft,
         "draft_date": draft_date,
         # Onboarding's start date: the first report's floor (onboarding seeds no draft any more).
-        "start_date": first_report_defaults(entity_id)[1],
+        "start_date": start_date,
         "published": published,
         "today_has_report": today_iso in published,
         "today_is_latest_report": today_iso == latest_iso,
