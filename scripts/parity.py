@@ -36,6 +36,9 @@ EXPECTED_DIFFS = {
     ("/home", "draft.last_edit_seconds"): "timing",
     # onboarding's start date, added here for the web app's floor; Flask's /home has no such key
     ("/home", "start_date"): "added",
+    # before the first report this service shows onboarding's opening balance, Flask 0
+    # (2026-10-27); once a report exists both read its closing balance
+    ("/home", "latest.closing_balance"): "opening balance before the first report",
 }
 
 

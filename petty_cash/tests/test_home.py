@@ -107,6 +107,26 @@ def test_the_onboarding_start_date_is_the_first_reports_floor(client, shop):
     assert home["draft_date"] is None
 
 
+def test_before_the_first_report_the_balance_is_the_onboarding_opening(client, shop):
+    """The copy test (2026-10-27): a new company opening at HKD 5,525.00 showed a current
+    balance of 0.00 until its first report. The cash in the drawer is the opening balance."""
+    EntityPettycashSettings.objects.create(entity_id=shop.entity.id, opening_balance=500,
+                                           start_date=TODAY - timedelta(days=5))
+
+    home = _home(client, shop)
+
+    assert home["latest"]["date"] is None
+    assert home["latest"]["closing_balance"] == 500.0
+
+
+def test_once_a_report_exists_its_balance_wins_over_the_opening(client, shop):
+    EntityPettycashSettings.objects.create(entity_id=shop.entity.id, opening_balance=500,
+                                           start_date=TODAY - timedelta(days=5))
+    make_report(shop.entity, TODAY, status="draft", created_by=shop.owner.id, closing_balance=420)
+
+    assert _home(client, shop)["latest"]["closing_balance"] == 420.0
+
+
 def test_today_submitted(client, shop):
     report = make_report(shop.entity, TODAY, closing_balance=10)
 
