@@ -10,12 +10,8 @@ from datetime import timedelta
 from decimal import Decimal
 
 import pytest
-
-from petty_cash.days import today
-from petty_cash.services.denominations import denominations_for
-from petty_cash.tests.conftest import FACES, headers, make_report, make_user, url
-from shared_models.enums import CashType, EntityRole
-from shared_models.models import (
+from minty_db.enums import CashType, EntityRole
+from minty_db.models import (
     CashInfo,
     EntityCashSetting,
     Report,
@@ -23,6 +19,10 @@ from shared_models.models import (
     ReportHistory,
     UserEntity,
 )
+
+from petty_cash.days import today
+from petty_cash.services.denominations import denominations_for
+from petty_cash.tests.conftest import FACES, headers, make_report, make_user, url
 
 pytestmark = pytest.mark.django_db
 D3 = today() - timedelta(days=1)

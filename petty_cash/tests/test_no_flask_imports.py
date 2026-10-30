@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-PACKAGES = ("petty_cash", "core", "shared_models", "config")
+PACKAGES = ("petty_cash", "core", "config")
 
 FORBIDDEN_ROOTS = {
     "flask",
@@ -64,4 +64,4 @@ def test_no_flask_world_import(path: Path):
 def test_the_walk_saw_the_service():
     files = {str(p.relative_to(ROOT)).replace("\\", "/") for p in _python_files()}
     assert "core/auth.py" in files
-    assert "shared_models/models.py" in files
+    assert "petty_cash/api.py" in files

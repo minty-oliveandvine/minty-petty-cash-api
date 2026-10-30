@@ -7,11 +7,11 @@ from datetime import timedelta
 from decimal import Decimal
 
 import pytest
+from minty_db.enums import EntityRole
+from minty_db.models import EntityPettycashSettings, Report, ReportHistory, UserEntity
 
 from petty_cash.days import today
 from petty_cash.tests.conftest import headers, make_report, make_user, url
-from shared_models.enums import EntityRole
-from shared_models.models import EntityPettycashSettings, Report, ReportHistory, UserEntity
 
 pytestmark = pytest.mark.django_db
 TODAY = today()
@@ -73,7 +73,7 @@ def test_the_days_draft_brings_its_values(client, shop):
     page = _get(client, shop, D3).json()
 
     assert page["draft"] == {
-        "id": draft.id, "status": "draft", "current_section": "sales", "completed_sections": ["opening"],
+        "id": str(draft.id), "status": "draft", "current_section": "sales", "completed_sections": ["opening"],
         "xero_integrated": False, "publishing_status": "unpublished",
     }
     assert page["cash_addition"] == 30.0 and page["withdrawal"] == "company"

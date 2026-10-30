@@ -9,7 +9,7 @@ does, so the answer is the view's: a slot is set when its row id is set and the 
 
 from __future__ import annotations
 
-from shared_models.models import AccountInfo, EntityPettycashSettings, XeroContactSync
+from minty_db.models import AccountInfo, EntityPettycashSettings, XeroContactSync
 
 #: The nine slots, in the dashboard's order (Flask's ``blueprints/shared/views.PETTYCASH_SLOTS``):
 #: (settings column, label, kind).

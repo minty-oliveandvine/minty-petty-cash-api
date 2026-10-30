@@ -27,6 +27,15 @@ from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
 from django.http import HttpResponse, JsonResponse
+from minty_db.enums import ReportStatus
+from minty_db.models import (
+    AccountInfo,
+    Attachment,
+    Report,
+    ReportExpense,
+    ReportExpenseAttachment,
+    XeroContactSync,
+)
 from ninja import Router
 
 from core.accounts_api import forward_expense_extract
@@ -59,15 +68,6 @@ from petty_cash.services.expenses import (
 from petty_cash.services.reports import currency_code, draft_payload, find_draft, progress_payload
 from petty_cash.services.suppliers import MAX_NAME as MAX_SUPPLIER_NAME
 from petty_cash.services.suppliers import SupplierRefused, create_supplier
-from shared_models.enums import ReportStatus
-from shared_models.models import (
-    AccountInfo,
-    Attachment,
-    Report,
-    ReportExpense,
-    ReportExpenseAttachment,
-    XeroContactSync,
-)
 
 router = Router()
 

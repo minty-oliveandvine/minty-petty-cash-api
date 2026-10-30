@@ -81,7 +81,7 @@ Continue to its old date (Dine at Venus, 2026-10-20).
 
 ## What this service writes
 
-The day's report and what hangs off it - `report`, `share_link`, and on delete `xero_report_sync`, `xero_bank_transfer`, `xero_bank_transaction`, `report_sale`, `report_expense`, `attachment`, `report_expense_attachment`, `report_cash_count`, `report_history` - plus `entity_cash_detail` on submit, a `xero_contact_sync` row for a new supplier, and from Settings `entities` (country, currency, `currency_format`), `entity_cash_setting`, `entity_sale_setting` and new `sale_info` catalogue rows. Everything else is read-only (`shared_models/models.py`). Deliberately not copied from Flask: the denomination resolver's write of a company's order onto the shared `cash_info` rows, and `log_history`'s separate commit that swallowed errors.
+The day's report and what hangs off it - `report`, `share_link`, and on delete `xero_report_sync`, `xero_bank_transfer`, `xero_bank_transaction`, `report_sale`, `report_expense`, `attachment`, `report_expense_attachment`, `report_cash_count`, `report_history` - plus `entity_cash_detail` on submit, a `xero_contact_sync` row for a new supplier, and from Settings `entities` (country, currency, `currency_format`), `entity_cash_setting`, `entity_sale_setting` and new `sale_info` catalogue rows. Everything else is read-only. The models are minty-db's (`minty_db.models`, pinned `v0.1` in `requirements.txt`; ids are `uuid.UUID` since 2026-10-30), and this service's own behaviour over them (role labels, the cash sales method's name) lives in `core/roles.py` and `services/sales.py`. Deliberately not copied from Flask: the denomination resolver's write of a company's order onto the shared `cash_info` rows, and `log_history`'s separate commit that swallowed errors.
 
 ## Tests
 
@@ -104,7 +104,7 @@ The day's report and what hangs off it - `report`, `share_link`, and on delete `
 
 B2 is a fake client (`storage.client` patched); HTTP to Flask and Xero is a fake `requests.post`.
 
-`pytest` runs on SQLite (tables from the models). With `MINTY_TEST_PG_URI` set it builds a database from Minty's `docs/schema/01_schema_rebased.sql` (`MINTY_REPO`, default `C:\Github\Minty`) and runs on Postgres - always with a unique `MINTY_TEST_PG_DBNAME`.
+`pytest` runs on SQLite (tables from the models). With `MINTY_TEST_PG_URI` set, minty-db's plugin (`minty_db.testing.pg`) builds a database from its packaged `01_schema_rebased.sql` and the suite runs on Postgres - always with a unique `MINTY_TEST_PG_DBNAME`. Under test, comparing a `uuid.UUID` with uuid-shaped text raises (root `conftest.py`): ids are `UUID` objects while paths, token claims and JSON carry text, so convert at the edge. The guard can't see a dict or set keyed one way and looked up the other; key id-indexed collections consistently.
 
 ## Parity with Flask (`scripts/parity.py`)
 

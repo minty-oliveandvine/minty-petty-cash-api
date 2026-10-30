@@ -26,14 +26,15 @@ from dataclasses import dataclass
 
 import jwt
 from django.conf import settings
+from minty_db.enums import EntityStatus, ModuleCode
+from minty_db.models import Entity, User, UserEntity
 from minty_shared import logctx
 from ninja.security import HttpBearer
 
 from core.entitlements import is_module_enabled
 from core.exceptions import Refused
 from core.policy import has_entity_access, is_superuser
-from shared_models.enums import EntityStatus, ModuleCode, entity_role_label
-from shared_models.models import Entity, User, UserEntity
+from core.roles import entity_role_label
 
 logger = logging.getLogger("petty-cash-api")
 

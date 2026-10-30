@@ -13,6 +13,8 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.db import transaction
+from minty_db.enums import ReportStatus
+from minty_db.models import Report
 
 from petty_cash.days import today
 from petty_cash.money import cents
@@ -28,8 +30,6 @@ from petty_cash.services.reports import (
     submitted_report_for,
     update_draft_progress,
 )
-from shared_models.enums import ReportStatus
-from shared_models.models import Report
 
 NEGATIVE = "Hmm, it looks like your cash balance is negative. Could you fix that first?"
 

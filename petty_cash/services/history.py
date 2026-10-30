@@ -8,9 +8,8 @@ failed rows on the page only.
 from __future__ import annotations
 
 from django.db.models import Q
-
-from shared_models.enums import ReportStatus
-from shared_models.models import Report, User
+from minty_db.enums import ReportStatus
+from minty_db.models import Report, User
 
 #: The history page's filter chips -> the Status pills each keeps (``report_page.report_status``).
 STATUS_FILTERS = ("draft", "submitted", "published", "failed")

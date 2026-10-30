@@ -2,8 +2,8 @@
 # Container entrypoint for minty-petty-cash-api.
 #
 # This service is a TENANT of the schema Flask owns: settings.py pins search_path to
-# the ``?schema=`` on DATABASE_URL (default pettycashv3, config/dburl.py), and shared_models maps tables Flask's Alembic
-# migrations create. So wait for both the database and that schema rather than creating
+# the ``?schema=`` on DATABASE_URL (default pettycashv3, config/dburl.py), and minty_db's models (the
+# minty-db package) map tables its migrations own - run by hand, never here. So wait for both the database and that schema rather than creating
 # anything ourselves.
 #
 # NO `manage.py migrate` HERE, EVER. This service owns zero tables and ships zero

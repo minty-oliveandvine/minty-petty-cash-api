@@ -18,13 +18,13 @@ from __future__ import annotations
 from decimal import Decimal
 
 from django.db import transaction
+from minty_db.enums import ReportStatus
+from minty_db.models import Report
 
 from petty_cash.money import cents
 from petty_cash.services.denominations import denominations_for, save_counts
 from petty_cash.services.reports import currency_code, log_history, update_draft_progress
 from petty_cash.services.sales import cash_sales_from_detail
-from shared_models.enums import ReportStatus
-from shared_models.models import Report
 
 NEGATIVE = "Hmm, it looks like your cash balance is negative. Could you fix that first?"
 NOT_A_DRAFT = "This report isn't a draft anymore, so its cash can't change here."

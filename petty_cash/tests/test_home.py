@@ -6,11 +6,11 @@ from __future__ import annotations
 from datetime import timedelta
 
 import pytest
+from minty_db.enums import EntityRole, SystemRole
+from minty_db.models import EntityPettycashSettings, UserEntity
 
 from petty_cash.days import today
 from petty_cash.tests.conftest import headers, make_report, make_user, url
-from shared_models.enums import EntityRole, SystemRole
-from shared_models.models import EntityPettycashSettings, UserEntity
 
 pytestmark = pytest.mark.django_db
 TODAY = today()
@@ -70,13 +70,13 @@ def test_a_draft_after_submitted_days_reads_as_the_page_does(client, shop):
 
     assert home["latest"]["date"] == TODAY.isoformat() and home["latest"]["closing_balance"] == 150.0
     assert home["latest"]["submitter_first_name"] == "Olive"
-    assert home["draft"]["id"] == draft.id
+    assert home["draft"]["id"] == str(draft.id)
     assert home["draft"]["current_section"] == "sales" and home["draft"]["completed_sections"] == ["opening"]
     assert 0 <= home["draft"]["last_edit_seconds"] < 600
     assert home["draft_date"] == TODAY.isoformat()
     assert home["published"] == {
         yesterday.isoformat(): {
-            "id": submitted.id,
+            "id": str(submitted.id),
             "closing_balance": 120.0,
             "bank_deposit": 50.0,
             "xero_integrated": True,
@@ -133,7 +133,7 @@ def test_today_submitted(client, shop):
     home = _home(client, shop)
 
     assert home["today_has_report"] is True and home["today_is_latest_report"] is True
-    assert home["published"][TODAY.isoformat()]["id"] == report.id
+    assert home["published"][TODAY.isoformat()]["id"] == str(report.id)
 
 
 def test_a_deposit_that_cannot_be_corrected_says_why(client, shop):
@@ -198,5 +198,5 @@ def test_a_stale_draft_beside_todays_draft_leaves_todays_in_charge(client, shop)
 
     home = _home(client, shop)
 
-    assert home["draft"]["id"] == current.id
+    assert home["draft"]["id"] == str(current.id)
     assert home["draft_date"] == TODAY.isoformat()

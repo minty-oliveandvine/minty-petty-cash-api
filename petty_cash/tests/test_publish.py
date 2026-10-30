@@ -15,6 +15,8 @@ import jwt
 import pytest
 import requests
 from django.conf import settings
+from minty_db.enums import EntityRole
+from minty_db.models import UserEntity
 
 from core.accounts_api import PUBLISH_UNCONFIRMED
 from petty_cash.routes.history import NO_REASONS
@@ -22,8 +24,6 @@ from petty_cash.tests.conftest import headers, make_entity, make_report, make_us
 from petty_cash.tests.test_close import D3
 from petty_cash.tests.test_deposit_correction import _Response
 from petty_cash.tests.test_report import _older, _set
-from shared_models.enums import EntityRole
-from shared_models.models import UserEntity
 
 pytestmark = pytest.mark.django_db
 PUBLISH = "http://flask.invalid/api/internal/xero/publish"

@@ -20,10 +20,10 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
 from django.conf import settings
+from minty_db.models import Attachment
 
 from petty_cash.files.downsize import downsize_bytes
 from petty_cash.files.receipt_keys import safe_extension, safe_stem
-from shared_models.models import Attachment
 
 logger = logging.getLogger("petty-cash-api")
 

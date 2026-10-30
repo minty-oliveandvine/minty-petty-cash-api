@@ -13,4 +13,4 @@ select = ["E", "F", "W", "I", "UP"]
 ignore = ["E501", "UP042"]
 
 [lint.isort]
-known-first-party = ["config", "core", "petty_cash", "shared_models"]
+known-first-party = ["config", "core", "petty_cash"]

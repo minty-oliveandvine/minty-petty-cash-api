@@ -26,9 +26,8 @@ from datetime import UTC, date, datetime, timedelta
 
 from django.conf import settings
 from django.db import transaction
-
-from shared_models.enums import ReportStatus
-from shared_models.models import Entity, Report, ShareLink, UserEntity
+from minty_db.enums import ReportStatus
+from minty_db.models import Entity, Report, ShareLink, UserEntity
 
 logger = logging.getLogger("petty-cash-api")
 

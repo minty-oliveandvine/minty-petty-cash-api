@@ -18,9 +18,10 @@ import unicodedata
 from datetime import date
 from urllib.parse import quote
 
+from minty_db.enums import DiscrepancyType, ReportStatus
+from minty_db.models import AccountInfo, EntityPettycashSettings, Report, ReportExpense
+
 from core.policy import Permission, has_permission
-from shared_models.enums import DiscrepancyType, ReportStatus
-from shared_models.models import AccountInfo, EntityPettycashSettings, Report, ReportExpense
 
 COLUMNS = ("Date", "Account Code", "Amount", "Description", "Reference", "Check Number")
 #: The longest range one export covers, in days counted inclusively (a leap year).

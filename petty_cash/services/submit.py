@@ -20,14 +20,14 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 from django.db import transaction
+from minty_db.enums import ReportStatus
+from minty_db.models import Report, ReportExpense
 
 from petty_cash.money import cents
 from petty_cash.services.cash import NEGATIVE, difference, expected_cash
 from petty_cash.services.denominations import refresh_cash_stock
 from petty_cash.services.reports import actual_cash_total, future_date_error, last_submitted
 from petty_cash.services.sales import cash_sales_from_detail
-from shared_models.enums import ReportStatus
-from shared_models.models import Report, ReportExpense
 
 logger = logging.getLogger("petty-cash-api")
 

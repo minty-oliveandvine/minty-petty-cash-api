@@ -21,13 +21,8 @@ from django.conf import settings
 from django.db import transaction
 from django.db.models import Exists, OuterRef
 from django.db.models.functions import Lower
-
-from petty_cash.files import storage
-from petty_cash.money import cents
-from petty_cash.services.reports import log_history, update_draft_progress
-from petty_cash.services.sales import cash_sales_from_detail
-from shared_models.enums import ReportStatus
-from shared_models.models import (
+from minty_db.enums import ReportStatus
+from minty_db.models import (
     AccountInfo,
     Attachment,
     EntityAccountXero,
@@ -36,6 +31,11 @@ from shared_models.models import (
     ReportExpenseAttachment,
     XeroContactSync,
 )
+
+from petty_cash.files import storage
+from petty_cash.money import cents
+from petty_cash.services.reports import log_history, update_draft_progress
+from petty_cash.services.sales import cash_sales_from_detail
 
 logger = logging.getLogger("petty-cash-api")
 

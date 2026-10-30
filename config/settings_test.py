@@ -13,11 +13,11 @@ SECRET_KEY = "test-secret-key-shared-with-flask"
 
 # Two test databases, chosen by MINTY_TEST_PG_URI (the same knobs as the other Django APIs):
 #
-#   unset  -> SQLite in memory, tables built FROM THE MODELS (SHARED_MODELS_MANAGED_FOR_TESTING).
-#   set    -> PostgreSQL, a database built from docs/schema/01_schema_rebased.sql in the Minty
-#             repo by tests/pg_harness.py (loaded by the root conftest.py). A mirror column the
-#             schema lacks fails on the SELECT, which is the point. MINTY_TEST_PG_DBNAME
-#             (minty_test - always give a unique one), MINTY_TEST_PG_KEEP=1, PG_BIN, MINTY_REPO.
+#   unset  -> SQLite in memory, tables built FROM THE MODELS (MIGRATION_MODULES has minty_db: None).
+#   set    -> PostgreSQL, a database built from minty-db's packaged 01_schema_rebased.sql by
+#             minty_db.testing.pg (the root conftest.py's plugin). A model column the schema
+#             lacks fails on the SELECT, which is the point. MINTY_TEST_PG_DBNAME
+#             (minty_test - always give a unique one), MINTY_TEST_PG_KEEP=1.
 _PG_URI = os.environ.get("MINTY_TEST_PG_URI")
 if _PG_URI:
     from urllib.parse import parse_qs as _parse_qs
@@ -36,7 +36,6 @@ else:
 LOGGING["handlers"]["file_core"] = {"class": "logging.NullHandler"}  # noqa: F405
 LOGGING["handlers"]["file_api"] = {"class": "logging.NullHandler"}  # noqa: F405
 
-SHARED_MODELS_MANAGED_FOR_TESTING = not _PG_URI
 
 # Fixed values, never the developer's .env: a CORS test must not pass or fail by whose
 # machine ran it, and no test may reach a real Flask or bucket.

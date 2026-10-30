@@ -15,12 +15,12 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from django.db.models import Count, Min
+from minty_db.enums import ReportStatus
+from minty_db.models import CurrencyInfo, Entity, Report, User, UserEntity
 
 from petty_cash.days import today
 from petty_cash.services.reports import first_report_defaults, live_drafts
 from petty_cash.services.xero_settings import account_for_role, missing_slots
-from shared_models.enums import ReportStatus
-from shared_models.models import CurrencyInfo, Entity, Report, User, UserEntity
 
 
 def _first_names(user_ids) -> dict[str, str | None]:
@@ -28,7 +28,7 @@ def _first_names(user_ids) -> dict[str, str | None]:
     if not ids:
         return {}
     return {
-        u.id: (u.first_name or "").strip() or None
+        str(u.id): (u.first_name or "").strip() or None
         for u in User.objects.filter(id__in=ids).only("id", "first_name")
     }
 

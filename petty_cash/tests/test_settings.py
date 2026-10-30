@@ -9,10 +9,8 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
-
-from petty_cash.tests.conftest import headers, make_currency, make_entity, make_user, url
-from shared_models.enums import CashType, EntityRole, SaleType
-from shared_models.models import (
+from minty_db.enums import CashType, EntityRole, SaleType
+from minty_db.models import (
     CashInfo,
     CountryInfo,
     Entity,
@@ -21,6 +19,8 @@ from shared_models.models import (
     SaleInfo,
     UserEntity,
 )
+
+from petty_cash.tests.conftest import headers, make_currency, make_entity, make_user, url
 
 pytestmark = pytest.mark.django_db
 

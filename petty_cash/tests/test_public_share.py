@@ -14,17 +14,17 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from django.conf import settings
 from django.test import Client
-
-from petty_cash.services.share import share_token, verify_share_token
-from petty_cash.tests.conftest import WEB, headers, url
-from petty_cash.tests.test_close import D3, _ready, _submit
-from shared_models.models import (
+from minty_db.models import (
     Attachment,
     Report,
     ReportExpense,
     ReportExpenseAttachment,
     ShareLink,
 )
+
+from petty_cash.services.share import share_token, verify_share_token
+from petty_cash.tests.conftest import WEB, headers, url
+from petty_cash.tests.test_close import D3, _ready, _submit
 
 pytestmark = pytest.mark.django_db
 

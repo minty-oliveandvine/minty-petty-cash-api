@@ -11,12 +11,8 @@ from io import BytesIO
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
-
-from petty_cash.days import today
-from petty_cash.files import storage
-from petty_cash.tests.conftest import WEB, headers, make_entity, make_report, make_user, url
-from shared_models.enums import EntityRole
-from shared_models.models import (
+from minty_db.enums import EntityRole
+from minty_db.models import (
     AccountInfo,
     Attachment,
     EntityAccountXero,
@@ -27,6 +23,10 @@ from shared_models.models import (
     UserEntity,
     XeroContactSync,
 )
+
+from petty_cash.days import today
+from petty_cash.files import storage
+from petty_cash.tests.conftest import WEB, headers, make_entity, make_report, make_user, url
 
 pytestmark = pytest.mark.django_db
 D3 = today() - timedelta(days=1)
@@ -123,12 +123,12 @@ def test_the_page_brings_the_lines_and_what_a_line_may_use(client, shop, lists, 
     assert resp.status_code == 200, resp.content
     body = resp.json()
     assert body["transaction_date"] == D3.isoformat() and body["currency_code"] == "HKD"
-    assert body["draft"]["id"] == draft.id and body["draft"]["completed_sections"] == ["opening", "sales"]
+    assert body["draft"]["id"] == str(draft.id) and body["draft"]["completed_sections"] == ["opening", "sales"]
     assert body["suppliers"] == [{"id": "con-0001", "name": "ABC Supplies"}, {"id": "con-0002", "name": "Taxi Co"}]
     assert body["accounts"] == [{"id": "acc-0001", "code": "400", "name": "Advertising"}]
     assert body["total"] == 1012.5
     [only] = body["lines"]
-    assert only["id"] == line.id and only["item"] == "Advertising" and only["amount"] == 1012.5
+    assert only["id"] == str(line.id) and only["item"] == "Advertising" and only["amount"] == 1012.5
     assert only["remarks"] == "Flyers"
     assert only["supplier"] == {"id": "con-0001", "name": "ABC Supplies"}
     assert only["account"] == {"id": "acc-0001", "code": "400", "name": "Advertising"}
@@ -372,7 +372,7 @@ def test_a_draft_line_is_changed_in_place_and_the_totals_follow(client, shop, li
         "id": str(line.id), "item": "Printing", "amount": 1234.5, "remarks": "Posters",
         "supplier": {"id": "con-0002", "name": "Taxi Co"},
         "account": {"id": "acc-0003", "code": "461", "name": "Printing"},
-        "receipts": [{"id": attachment.id, "name": "till-slip.jpg", "mime_type": "image/jpeg"}],
+        "receipts": [{"id": str(attachment.id), "name": "till-slip.jpg", "mime_type": "image/jpeg"}],
     }
     row = Report.objects.get(id=draft.id)
     assert row.expense_total == Decimal("1249.50")
@@ -405,7 +405,7 @@ def test_a_new_receipt_replaces_the_line_s_and_the_old_file_goes(client, shop, l
     assert resp.status_code == 200, resp.content
     [receipt] = resp.json()["line"]["receipts"]
     assert receipt["name"] == "scan.pdf" and receipt["mime_type"] == "image/png"  # typed by its bytes
-    assert receipt["id"] != attachment.id
+    assert receipt["id"] != str(attachment.id)
     assert s3.deleted == [attachment.file_path] and not Attachment.objects.filter(id=attachment.id).exists()
     [key] = s3.objects
     assert s3.objects[key] == PNG and key.endswith("_ADVERTISING_10.pdf")  # named as adding names it
@@ -421,7 +421,7 @@ def test_a_receipt_can_be_removed_but_never_the_last_one(client, shop, lists, s3
         resp = _edit(client, shop, line.id, remove_receipt_ids=second.id)
 
     assert resp.status_code == 200, resp.content
-    assert [r["id"] for r in resp.json()["line"]["receipts"]] == [first.id]
+    assert [r["id"] for r in resp.json()["line"]["receipts"]] == [str(first.id)]
     assert s3.deleted == ["expenses/second.jpg"]
 
     last = _edit(client, shop, line.id, remove_receipt_ids=first.id)
@@ -513,8 +513,9 @@ def test_a_contact_created_on_the_expenses_step_is_saved_and_carried_by_the_new_
         client, shop, lists, s3, monkeypatch):
     """The web app's flow: POST /suppliers, then add the line with the id it answered. The new
     contact is a xero_contact_sync row, the line points at it, and the step lists it after."""
+    from minty_db.models import Entity
+
     from petty_cash.tests.test_suppliers import ORG, FakeHttp
-    from shared_models.models import Entity
 
     fake = FakeHttp()
     monkeypatch.setattr("requests.post", fake.post)

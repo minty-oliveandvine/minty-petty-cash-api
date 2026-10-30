@@ -18,6 +18,7 @@ from __future__ import annotations
 from datetime import date
 
 from django.http import HttpResponse
+from minty_db.enums import ReportStatus
 from ninja import Router
 
 from core.accounts_api import PublishReasonsUnavailable, publish_reasons
@@ -31,7 +32,6 @@ from petty_cash.services.history import STATUS_FILTERS, report_history
 from petty_cash.services.report_actions import was_published
 from petty_cash.services.report_page import report_status
 from petty_cash.services.reports import currency_code, last_submitted
-from shared_models.enums import ReportStatus
 
 router = Router()
 

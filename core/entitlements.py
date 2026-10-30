@@ -8,7 +8,7 @@ writes; the catalogue's ``is_active`` says a module is offered, never who may us
 
 from __future__ import annotations
 
-from shared_models.models import EntityFunction, EntityFunctionMap
+from minty_db.models import EntityFunction, EntityFunctionMap
 
 
 def is_module_enabled(entity_id: str, function_code: str) -> bool:

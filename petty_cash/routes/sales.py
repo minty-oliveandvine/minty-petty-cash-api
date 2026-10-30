@@ -23,8 +23,7 @@ from petty_cash.routes._input import (
     require_edit,
 )
 from petty_cash.services.reports import currency_code, draft_payload, find_draft, progress_payload
-from petty_cash.services.sales import page_methods, save_sales
-from shared_models.models import SaleInfo
+from petty_cash.services.sales import CASH_VALUE_NAME, page_methods, save_sales
 
 router = Router()
 NO_DRAFT = "I don't see a draft yet - let's start with the opening entry."
@@ -32,7 +31,7 @@ NO_DRAFT = "I don't see a draft yet - let's start with the opening entry."
 
 def _cash(draft, methods) -> float | None:
     """What the page's cash field shows: the Cash method's row, else the report's cash column."""
-    row = next((m["amount"] for m in methods if m["value_name"] == SaleInfo.CASH_VALUE_NAME), None)
+    row = next((m["amount"] for m in methods if m["value_name"] == CASH_VALUE_NAME), None)
     if row:
         return out(row)
     return out(draft.cashsale_total) if draft is not None and draft.cashsale_total else None
@@ -48,7 +47,7 @@ def sales_payload(entity_id, day) -> dict:
         "methods": [
             {**m, "amount": out(m["amount"]) if m["amount"] else None}
             for m in methods
-            if m["value_name"] != SaleInfo.CASH_VALUE_NAME
+            if m["value_name"] != CASH_VALUE_NAME
         ],
         "cash_sales": _cash(draft, methods),
     }
@@ -94,12 +93,12 @@ def save_sales_step(request):
     require_edit(request)
     entity_id = request.company.id
     value_names = {
-        m["value_name"]: m["name"] for m in page_methods(entity_id) if m["value_name"] != SaleInfo.CASH_VALUE_NAME
+        m["value_name"]: m["name"] for m in page_methods(entity_id) if m["value_name"] != CASH_VALUE_NAME
     }
     save = _valid_save(json_body(request), value_names)
     draft = find_draft(entity_id, save["day"])
     if draft is None:
         raise Refused(NO_DRAFT, 409, to="opening")
-    draft = save_sales(entity_id, request.auth_user, draft, {**save["amounts"], SaleInfo.CASH_VALUE_NAME: save["cash"]},
+    draft = save_sales(entity_id, request.auth_user, draft, {**save["amounts"], CASH_VALUE_NAME: save["cash"]},
                        save["action_type"])
     return progress_payload(draft, "expenses" if save["action_type"] == "save_next" else "dashboard")

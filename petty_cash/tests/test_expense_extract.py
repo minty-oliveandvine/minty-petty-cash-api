@@ -12,12 +12,12 @@ import pytest
 import requests
 from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
+from minty_db.enums import EntityRole
+from minty_db.models import UserEntity
 
 from petty_cash.tests.conftest import WEB, headers, make_user, url
 from petty_cash.tests.test_deposit_correction import _Response
 from petty_cash.tests.test_expenses import JPEG, PNG
-from shared_models.enums import EntityRole
-from shared_models.models import UserEntity
 
 pytestmark = pytest.mark.django_db
 EXTRACT = "http://flask.invalid/api/internal/petty-cash/expense-extract"

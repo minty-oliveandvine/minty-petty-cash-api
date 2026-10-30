@@ -16,10 +16,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from django.db.models import F, Sum
-
-from petty_cash.money import cents
-from shared_models.enums import ReportStatus
-from shared_models.models import (
+from minty_db.enums import ReportStatus
+from minty_db.models import (
     CashInfo,
     CountryInfo,
     Entity,
@@ -28,6 +26,8 @@ from shared_models.models import (
     Report,
     ReportCashCount,
 )
+
+from petty_cash.money import cents
 
 logger = logging.getLogger("petty-cash-api")
 

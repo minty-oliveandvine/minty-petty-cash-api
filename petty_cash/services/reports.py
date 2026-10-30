@@ -14,11 +14,8 @@ from __future__ import annotations
 from decimal import Decimal
 
 from django.db.models import F, Sum
-
-from petty_cash.days import today
-from petty_cash.money import cents
-from shared_models.enums import ReportStatus
-from shared_models.models import (
+from minty_db.enums import ReportStatus
+from minty_db.models import (
     CurrencyInfo,
     Entity,
     EntityPettycashSettings,
@@ -26,6 +23,9 @@ from shared_models.models import (
     ReportCashCount,
     ReportHistory,
 )
+
+from petty_cash.days import today
+from petty_cash.money import cents
 
 
 def find_draft(entity_id, day, draft_id=None) -> Report | None:

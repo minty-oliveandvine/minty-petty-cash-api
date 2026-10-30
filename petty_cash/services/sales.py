@@ -12,11 +12,14 @@ from __future__ import annotations
 from decimal import Decimal
 
 from django.db import transaction
+from minty_db.enums import SaleType
+from minty_db.models import EntitySaleSetting, Report, ReportSale, SaleInfo
 
 from petty_cash.money import cents
 from petty_cash.services.reports import log_history, update_draft_progress
-from shared_models.enums import SaleType
-from shared_models.models import EntitySaleSetting, Report, ReportSale, SaleInfo
+
+#: Cash is the sales-method catalogue's ``other`` row whose ``value_name`` is this.
+CASH_VALUE_NAME = "cash_sales"
 
 #: A method the page lists but the save has always skipped (the old Deliveroo column).
 SKIPPED = "deliveroo_sales"
@@ -46,7 +49,7 @@ def sales_methods(entity_id) -> list[dict]:
 
 def shown(method: dict) -> bool:
     """The page has a field for the electronic and delivery methods, and for Cash."""
-    return method["type"] in (SaleType.ELECTRONIC, SaleType.DELIVERY) or method["value_name"] == SaleInfo.CASH_VALUE_NAME
+    return method["type"] in (SaleType.ELECTRONIC, SaleType.DELIVERY) or method["value_name"] == CASH_VALUE_NAME
 
 
 def page_methods(entity_id, report_id=None) -> list[dict]:
@@ -69,7 +72,7 @@ def page_methods(entity_id, report_id=None) -> list[dict]:
 
 def cash_sales_from_detail(report: Report) -> Decimal:
     """The Cash method's row, else the report's cash column (Flask's ``get_cash_sales_from_detail``)."""
-    cash_id = SaleInfo.objects.filter(value_name=SaleInfo.CASH_VALUE_NAME).values_list("id", flat=True).first()
+    cash_id = SaleInfo.objects.filter(value_name=CASH_VALUE_NAME).values_list("id", flat=True).first()
     total = sum(
         (cents(a) for a in ReportSale.objects.filter(report_id=report.id, sale_id=cash_id).values_list("amount", flat=True)),
         Decimal("0.00"),
@@ -88,7 +91,7 @@ def refresh_sales_totals(report: Report) -> None:
     counted = {sid: v for sid, v in by_sale.items() if names.get(sid) and v}
     cash = cents(report.cashsale_total)
     total = sum(counted.values(), Decimal("0.00"))
-    cash_in_rows = any(names[sid] == SaleInfo.CASH_VALUE_NAME for sid in counted)
+    cash_in_rows = any(names[sid] == CASH_VALUE_NAME for sid in counted)
     if cash > 0 and not cash_in_rows:
         total += cash
     report.total_sales = total
@@ -102,7 +105,7 @@ def save_sales(entity_id, user, draft: Report, amounts: dict, action_type: str) 
     balance, the progress and a history line - one transaction."""
     draft = Report.objects.select_for_update().get(id=draft.id)
     draft.created_by = user.id
-    cash = cents(amounts.get(SaleInfo.CASH_VALUE_NAME) or 0)
+    cash = cents(amounts.get(CASH_VALUE_NAME) or 0)
     draft.cashsale_total = cash
 
     shop_total, delivery_total = cash, Decimal("0.00")
@@ -111,7 +114,7 @@ def save_sales(entity_id, user, draft: Report, amounts: dict, action_type: str) 
         if not field or field == SKIPPED or not shown(method):
             continue
         amount = cents(amounts.get(field) or 0)
-        if field != SaleInfo.CASH_VALUE_NAME:
+        if field != CASH_VALUE_NAME:
             if method["type"] == SaleType.DELIVERY:
                 delivery_total += amount
             else:
@@ -154,7 +157,7 @@ def report_methods(entity_id, report_id) -> list[dict]:
     catalogue = {s.id: s for s in SaleInfo.objects.filter(id__in=[sale_id for sale_id, _ in rows])}
     for sale_id, amount in rows:
         sale = catalogue.get(sale_id)
-        if sale is None or str(sale_id) in listed or not amount or sale.value_name in (SKIPPED, SaleInfo.CASH_VALUE_NAME):
+        if sale is None or str(sale_id) in listed or not amount or sale.value_name in (SKIPPED, CASH_VALUE_NAME):
             continue
         methods.append({"sale_id": str(sale_id), "name": sale.sale_name, "value_name": sale.value_name,
                         "type": str(sale.type), "amount": amount})

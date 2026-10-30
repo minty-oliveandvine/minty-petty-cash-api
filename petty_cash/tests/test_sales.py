@@ -7,11 +7,8 @@ from datetime import timedelta
 from decimal import Decimal
 
 import pytest
-
-from petty_cash.days import today
-from petty_cash.tests.conftest import headers, make_report, make_user, url
-from shared_models.enums import EntityRole, SaleType
-from shared_models.models import (
+from minty_db.enums import EntityRole, SaleType
+from minty_db.models import (
     EntitySaleSetting,
     Report,
     ReportHistory,
@@ -19,6 +16,9 @@ from shared_models.models import (
     SaleInfo,
     UserEntity,
 )
+
+from petty_cash.days import today
+from petty_cash.tests.conftest import headers, make_report, make_user, url
 
 pytestmark = pytest.mark.django_db
 D3 = today() - timedelta(days=1)
@@ -92,7 +92,7 @@ def test_the_methods_come_in_settings_order_with_the_days_amounts(client, shop, 
     assert resp.status_code == 200, resp.content
     body = resp.json()
     assert body["transaction_date"] == D3.isoformat() and body["currency_code"] == "HKD"
-    assert body["draft"]["id"] == draft.id and body["draft"]["completed_sections"] == ["opening"]
+    assert body["draft"]["id"] == str(draft.id) and body["draft"]["completed_sections"] == ["opening"]
     by_type = lambda t: [m["name"] for m in body["methods"] if m["type"] == t]  # noqa: E731
     assert by_type("electronic") == ["Visa", "Alipay", "WeChat Pay", "Mastercard", "UnionPay", "Amex", "Octopus"]
     assert by_type("delivery") == ["Food Panda", "Keeta", "OpenRice"]
@@ -130,7 +130,7 @@ def test_save_next_writes_every_method_and_moves_on_to_expenses(client, shop, me
     resp = _put(client, shop, _body(cash_sales=1000.5, amounts={"visa_sales": 200, "foodpanda_sales": 33.25}))
 
     assert resp.status_code == 200, resp.content
-    assert resp.json() == {"draft_id": draft.id, "transaction_date": D3.isoformat(), "current_section": "expenses",
+    assert resp.json() == {"draft_id": str(draft.id), "transaction_date": D3.isoformat(), "current_section": "expenses",
                            "completed_sections": ["opening", "sales"], "next": "expenses"}
     amounts = _amounts(draft)
     assert amounts["cash_sales"] == Decimal("1000.50") and amounts["visa_sales"] == 200

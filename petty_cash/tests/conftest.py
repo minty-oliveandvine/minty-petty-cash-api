@@ -15,9 +15,8 @@ import jwt
 import pytest
 from django.conf import settings
 from django.test import Client
-
-from shared_models.enums import CashType, EntityRole, EntityStatus, ModuleCode, SystemRole
-from shared_models.models import (
+from minty_db.enums import CashType, EntityRole, EntityStatus, ModuleCode, SystemRole
+from minty_db.models import (
     CashInfo,
     CountryInfo,
     CurrencyInfo,
@@ -34,6 +33,8 @@ WEB = "http://localhost:3010"
 def mint(user_id, *, module="billing", secret=None, expires_in=1800, **claims) -> str:
     """A module token as Flask's ``_generate_module_token`` mints it."""
     now = int(time.time())
+    # Claims are text, as in Flask's tokens: a UUID id is written out as its string.
+    claims = {k: str(v) if isinstance(v, uuid.UUID) else v for k, v in claims.items()}
     payload = {"user_id": str(user_id), "module": module, "iat": now, "exp": now + expires_in, **claims}
     return jwt.encode(payload, secret or settings.SECRET_KEY, algorithm="HS256")
 
@@ -52,7 +53,7 @@ class Shop:
 def make_user(email="owner@test.com", *, first_name="Olive", last_name="Owner", approved=True,
               system_role=SystemRole.NORMAL) -> User:
     return User.objects.create(
-        id=str(uuid.uuid4()), email=email, username=email, password="x", first_name=first_name,
+        id=uuid.uuid4(), email=email, username=email, password="x", first_name=first_name,
         last_name=last_name, approved=approved, system_role=system_role,
     )
 
@@ -60,14 +61,14 @@ def make_user(email="owner@test.com", *, first_name="Olive", last_name="Owner", 
 def make_currency(code="HKD") -> CurrencyInfo:
     found = CurrencyInfo.objects.filter(currency_code=code).first()
     return found or CurrencyInfo.objects.create(
-        id=str(uuid.uuid4()), currency_code=code, currency_name=code, symbol="$", decimal_places=2
+        id=uuid.uuid4(), currency_code=code, currency_name=code, symbol="$", decimal_places=2
     )
 
 
 def petty_cash_module() -> EntityFunction:
     found = EntityFunction.objects.filter(function_code=ModuleCode.PETTY_CASH).first()
     return found or EntityFunction.objects.create(
-        id=str(uuid.uuid4()), function_code=ModuleCode.PETTY_CASH, function_name="Petty Cash"
+        id=uuid.uuid4(), function_code=ModuleCode.PETTY_CASH, function_name="Petty Cash"
     )
 
 
@@ -78,7 +79,7 @@ def make_entity(owner, *, name="Acme Shop", role=EntityRole.ADMIN, status=Entity
         country_code="HK", alpha3_code="HKG", country_name_en="Hong Kong", currency_id=currency.id
     )
     entity = Entity.objects.create(
-        id=str(uuid.uuid4()), name=name, status=status, currency_id=currency.id,
+        id=uuid.uuid4(), name=name, status=status, currency_id=currency.id,
         country_code=country.country_code,
     )
     UserEntity.objects.create(user_id=owner.id, entity_id=entity.id, role=role, approved=True)
@@ -108,13 +109,13 @@ def url(entity_id, rest="") -> str:
 def make_report(entity, day, *, status="submitted", created_by=None, **fields):
     """A report row as Flask's ``Report(...)`` inserts it - its Python defaults spelled out
     (rule 0: SQLAlchemy's ``default=`` never reaches a Django insert)."""
-    from shared_models.models import Report
+    from minty_db.models import Report
 
     values = {"cash_addition": 0, "cashsale_total": 0, "nocashsale_total": 0, "total_sales": 0,
               "bank_deposit": 0, "discrepancy_amount": 0, "xero_integrated": False}
     values.update(fields)
     return Report.objects.create(
-        id=str(uuid.uuid4()), entity_id=entity.id, transaction_date=day, status=status,
+        id=uuid.uuid4(), entity_id=entity.id, transaction_date=day, status=status,
         created_by=created_by, **values,
     )
 

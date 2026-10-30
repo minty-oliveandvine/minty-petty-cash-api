@@ -151,8 +151,9 @@ def _share_path(link_id: str, secret: str) -> str | None:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
     django.setup()
+    from minty_db.models import ShareLink
+
     from petty_cash.services.share import verify_share_token
-    from shared_models.models import ShareLink
 
     link = ShareLink.objects.filter(id=link_id).first()
     if link is None:

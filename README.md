@@ -29,9 +29,9 @@ copy .env.example .env          # then set SECRET_KEY and DATABASE_URL
 .venv\Scripts\python -m pytest            # SQLite, tables built from the models
 ```
 
-Postgres mode builds the real schema from Minty's `docs/schema/01_schema_rebased.sql`:
-set `MINTY_TEST_PG_URI` (a server URL), `MINTY_TEST_PG_DBNAME` (always a unique name),
-`MINTY_REPO` (default `C:\Github\Minty`) and, if psql is not on PATH, `PG_BIN`.
+Postgres mode builds the real schema from minty-db's packaged `01_schema_rebased.sql`
+(`minty_db.testing.pg`): set `MINTY_TEST_PG_URI` (a server URL) and `MINTY_TEST_PG_DBNAME`
+(always a unique name).
 
 `ruff check .` lints; CI runs both modes through the shared `.github` workflow
 (`python-api.yml@v1`).

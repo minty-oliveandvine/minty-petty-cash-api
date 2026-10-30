@@ -18,13 +18,8 @@ from __future__ import annotations
 import logging
 
 from django.db import transaction
-
-from core.policy import Permission, can_delete_report, has_permission
-from petty_cash.files import storage
-from petty_cash.services.denominations import refresh_cash_stock
-from petty_cash.services.reports import is_stale_draft
-from shared_models.enums import ReportStatus
-from shared_models.models import (
+from minty_db.enums import ReportStatus
+from minty_db.models import (
     Attachment,
     Report,
     ReportCashCount,
@@ -36,6 +31,11 @@ from shared_models.models import (
     XeroBankTransfer,
     XeroReportSync,
 )
+
+from core.policy import Permission, can_delete_report, has_permission
+from petty_cash.files import storage
+from petty_cash.services.denominations import refresh_cash_stock
+from petty_cash.services.reports import is_stale_draft
 
 logger = logging.getLogger("petty-cash-api")
 

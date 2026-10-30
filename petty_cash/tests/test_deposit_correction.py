@@ -12,11 +12,11 @@ import jwt
 import pytest
 import requests
 from django.conf import settings
+from minty_db.enums import EntityRole
+from minty_db.models import UserEntity
 
 from core.accounts_api import UNCONFIRMED
 from petty_cash.tests.conftest import headers, make_user, url
-from shared_models.enums import EntityRole
-from shared_models.models import UserEntity
 
 pytestmark = pytest.mark.django_db
 FLASK = "http://flask.invalid/api/internal/xero/deposit-correction"

@@ -4,10 +4,10 @@ Flask's ``petty_cash_api/routes/company.py``."""
 
 from __future__ import annotations
 
+from minty_db.models import CurrencyInfo
 from ninja import Router
 
 from petty_cash.people import person_payload
-from shared_models.models import CurrencyInfo
 
 router = Router()
 

@@ -13,11 +13,8 @@ from datetime import timedelta
 
 import pytest
 from django.conf import settings
-
-from petty_cash.tests.conftest import headers, make_entity, make_report, make_user, url
-from petty_cash.tests.test_close import D3, _ready, _stock, _submit
-from shared_models.enums import EntityRole, SaleType
-from shared_models.models import (
+from minty_db.enums import EntityRole, SaleType
+from minty_db.models import (
     Attachment,
     Report,
     ReportCashCount,
@@ -30,6 +27,9 @@ from shared_models.models import (
     UserEntity,
     XeroReportSync,
 )
+
+from petty_cash.tests.conftest import headers, make_entity, make_report, make_user, url
+from petty_cash.tests.test_close import D3, _ready, _stock, _submit
 
 pytestmark = pytest.mark.django_db
 
@@ -348,7 +348,7 @@ def test_a_draft_is_not_shared(client, shop, notes):
 
 
 def test_a_name_without_latin_letters_is_prefixed_report(client, shop, notes):
-    from shared_models.models import Entity
+    from minty_db.models import Entity
 
     Entity.objects.filter(id=shop.entity.id).update(name="小店")
     report = _submitted(client, shop, notes)

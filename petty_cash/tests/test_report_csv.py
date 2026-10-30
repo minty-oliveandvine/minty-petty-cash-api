@@ -10,18 +10,18 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
-
-from core import policy
-from petty_cash.tests.conftest import WEB, headers, make_entity, make_report, make_user, url
-from petty_cash.tests.test_close import D3
-from shared_models.enums import EntityRole
-from shared_models.models import (
+from minty_db.enums import EntityRole
+from minty_db.models import (
     AccountInfo,
     Entity,
     EntityPettycashSettings,
     ReportExpense,
     UserEntity,
 )
+
+from core import policy
+from petty_cash.tests.conftest import WEB, headers, make_entity, make_report, make_user, url
+from petty_cash.tests.test_close import D3
 
 pytestmark = pytest.mark.django_db
 
@@ -37,7 +37,7 @@ def _range(days_back_start=2, days_back_end=0):
 
 
 def _account(entity, code, name):
-    return AccountInfo.objects.create(id=str(uuid.uuid4()), entity_id=entity.id, type="EXPENSE", name=name,
+    return AccountInfo.objects.create(id=uuid.uuid4(), entity_id=entity.id, type="EXPENSE", name=name,
                                       xero_account_id=str(uuid.uuid4()), xero_code=code, status="ACTIVE")
 
 
@@ -59,7 +59,7 @@ def books(shop):
                            opening_balance=0, closing_balance=0, **fields)
 
     def line(row, minutes, item, amount, remarks, account=None):
-        ReportExpense.objects.create(id=str(uuid.uuid4()), report_id=row.id, item=item, amount=Decimal(str(amount)),
+        ReportExpense.objects.create(id=uuid.uuid4(), report_id=row.id, item=item, amount=Decimal(str(amount)),
                                      remarks=remarks, account_id=account.id if account else None,
                                      created_at=base + timedelta(minutes=minutes))
 

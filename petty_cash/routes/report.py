@@ -30,6 +30,8 @@ import uuid
 from decimal import Decimal
 
 from django.http import JsonResponse
+from minty_db.enums import ReportStatus
+from minty_db.models import Report
 from ninja import Router
 
 from core.accounts_api import PublishReasonsUnavailable, forward_publish, publish_reasons
@@ -61,8 +63,6 @@ from petty_cash.services.report_page import cash_summary, report_facts, report_s
 from petty_cash.services.reports import currency_code, is_stale_draft
 from petty_cash.services.sales import cash_sales_from_detail, report_methods
 from petty_cash.services.share import ShareRefused, create_share_link
-from shared_models.enums import ReportStatus
-from shared_models.models import Report
 
 router = Router()
 

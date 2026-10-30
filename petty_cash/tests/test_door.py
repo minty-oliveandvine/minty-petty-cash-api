@@ -5,9 +5,9 @@ every answer - a bare 401 reads to the browser as a CORS failure."""
 from __future__ import annotations
 
 import pytest
+from minty_db.enums import EntityRole, EntityStatus, SystemRole
 
 from petty_cash.tests.conftest import WEB, headers, make_entity, make_user, url
-from shared_models.enums import EntityRole, EntityStatus, SystemRole
 
 pytestmark = pytest.mark.django_db
 
@@ -22,14 +22,14 @@ def test_a_member_reads_the_company_and_who_they_are(client, shop):
     assert resp.status_code == 200, resp.content
     assert resp.json() == {
         "company": {
-            "id": shop.entity.id,
+            "id": str(shop.entity.id),
             "name": "Acme Shop",
             "role": "admin",
             "role_label": "Admin",
             "currency": {"code": "HKD", "decimal_places": 2},
         },
         "person": {
-            "id": shop.owner.id,
+            "id": str(shop.owner.id),
             "first_name": "Olive",
             "last_name": "Owner",
             "name": "Olive Owner",
@@ -134,7 +134,7 @@ def test_a_superuser_enters_any_company_with_no_role(client, shop):
 
 def test_a_cashier_reads_their_role(client, shop):
     clerk = make_user("clerk@test.com", first_name="", last_name="")
-    from shared_models.models import UserEntity
+    from minty_db.models import UserEntity
 
     UserEntity.objects.create(user_id=clerk.id, entity_id=shop.entity.id, role=EntityRole.CASHIER, approved=True)
 

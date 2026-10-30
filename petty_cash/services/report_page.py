@@ -4,10 +4,7 @@ count, and the audit line (who submitted, when, Xero). Read-only."""
 
 from __future__ import annotations
 
-from petty_cash.days import hk
-from petty_cash.money import cents
-from petty_cash.services.reports import actual_cash_total
-from shared_models.models import (
+from minty_db.models import (
     Attachment,
     Report,
     ReportExpense,
@@ -15,6 +12,10 @@ from shared_models.models import (
     User,
     XeroContactSync,
 )
+
+from petty_cash.days import hk
+from petty_cash.money import cents
+from petty_cash.services.reports import actual_cash_total
 
 
 def _submitter(report: Report) -> str | None:

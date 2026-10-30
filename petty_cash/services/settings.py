@@ -17,9 +17,8 @@ import uuid
 from django.db import transaction
 from django.db.models import F, Max, Q
 from django.db.models.functions import Lower
-
-from shared_models.enums import SaleType
-from shared_models.models import (
+from minty_db.enums import SaleType
+from minty_db.models import (
     CashInfo,
     CountryInfo,
     CurrencyInfo,

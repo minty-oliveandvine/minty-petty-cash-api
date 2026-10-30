@@ -12,11 +12,11 @@ import jwt
 import pytest
 import requests
 from django.conf import settings
+from minty_db.enums import EntityRole
+from minty_db.models import UserEntity
 
 from petty_cash.tests.conftest import headers, make_entity, make_report, make_user, url
 from petty_cash.tests.test_close import D3
-from shared_models.enums import EntityRole
-from shared_models.models import UserEntity
 
 pytestmark = pytest.mark.django_db
 FLASK = "http://flask.invalid/api/internal/xero/publish-reasons"

@@ -16,6 +16,7 @@ import uuid
 from datetime import timedelta
 from decimal import Decimal
 
+from minty_db.models import Report
 from ninja import Router
 
 from core.exceptions import Refused
@@ -33,7 +34,7 @@ from petty_cash.services.reports import (
     find_draft,
     submitted_report_for,
 )
-from petty_cash.services.sales import cash_sales_from_detail, page_methods
+from petty_cash.services.sales import CASH_VALUE_NAME, cash_sales_from_detail, page_methods
 from petty_cash.services.submit import (
     ALREADY_SUBMITTED,
     SubmitRefused,
@@ -41,7 +42,6 @@ from petty_cash.services.submit import (
     submit_problem,
     submit_report,
 )
-from shared_models.models import Report, SaleInfo
 
 router = Router()
 
@@ -94,7 +94,7 @@ def close_page(request):
     draft = _draft_or_refusal(entity_id, day)
 
     facts = report_facts(draft)
-    methods = [m for m in page_methods(entity_id, draft.id) if m["value_name"] != SaleInfo.CASH_VALUE_NAME]
+    methods = [m for m in page_methods(entity_id, draft.id) if m["value_name"] != CASH_VALUE_NAME]
     lines = facts["expenses"]
     problem = submit_problem(draft)
     history, yesterday = _sales_history(entity_id, day, draft.total_sales)

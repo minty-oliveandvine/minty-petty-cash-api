@@ -9,10 +9,10 @@ import json
 import jwt
 import pytest
 from django.conf import settings
+from minty_db.enums import EntityRole
+from minty_db.models import Entity, UserEntity, XeroContactSync
 
 from petty_cash.tests.conftest import headers, make_user, url
-from shared_models.enums import EntityRole
-from shared_models.models import Entity, UserEntity, XeroContactSync
 
 pytestmark = pytest.mark.django_db
 ORG = "org-1234"

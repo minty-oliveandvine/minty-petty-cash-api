@@ -23,6 +23,7 @@ from __future__ import annotations
 import uuid
 
 from django.http import JsonResponse
+from minty_db.models import Entity, SaleInfo
 from ninja import Router
 
 from core.accounts_api import forward_xero_settings
@@ -42,7 +43,6 @@ from petty_cash.services.settings import (
     reorder_methods,
     save_country_currency,
 )
-from shared_models.models import Entity, SaleInfo
 
 router = Router()
 

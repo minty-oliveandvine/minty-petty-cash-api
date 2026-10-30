@@ -11,13 +11,13 @@ import jwt
 import pytest
 import requests
 from django.conf import settings
+from minty_db.enums import EntityRole
 
 from core.accounts_api import XERO_SETTINGS_UNCONFIRMED, XERO_SETTINGS_UNREACHABLE
 from petty_cash.tests.conftest import headers, url
 from petty_cash.tests.test_deposit_correction import _Response
 from petty_cash.tests.test_publish import FakeFlask
 from petty_cash.tests.test_settings import call, member
-from shared_models.enums import EntityRole
 
 pytestmark = pytest.mark.django_db
 SETTINGS = "http://flask.invalid/api/internal/xero/petty-cash-settings"

@@ -11,9 +11,9 @@ import logging
 import requests
 from django.conf import settings
 from django.db import transaction
+from minty_db.models import Entity, XeroContactSync
 
 from core.xero_tokens import XeroTokenUnavailable, xero_token
-from shared_models.models import Entity, XeroContactSync
 
 logger = logging.getLogger("petty-cash-api")
 

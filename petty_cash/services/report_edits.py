@@ -20,6 +20,8 @@ from __future__ import annotations
 import logging
 
 from django.db import transaction
+from minty_db.enums import ReportStatus
+from minty_db.models import Report, ReportExpense
 
 from core.policy import Permission, has_permission
 from petty_cash.files import storage
@@ -30,8 +32,6 @@ from petty_cash.services.expenses import (
     replace_receipts,
     suppliers,
 )
-from shared_models.enums import ReportStatus
-from shared_models.models import Report, ReportExpense
 
 logger = logging.getLogger("petty-cash-api")
 

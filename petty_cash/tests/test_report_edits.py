@@ -10,12 +10,8 @@ from datetime import timedelta
 
 import pytest
 from django.test.client import BOUNDARY, MULTIPART_CONTENT, encode_multipart
-
-from petty_cash.tests.conftest import headers, make_entity, make_report, make_user, url
-from petty_cash.tests.test_close import D3, _ready, _submit
-from petty_cash.tests.test_expenses import JPEG, PNG, lists, s3  # noqa: F401  (fixtures)
-from shared_models.enums import SystemRole
-from shared_models.models import (
+from minty_db.enums import SystemRole
+from minty_db.models import (
     AccountInfo,
     Attachment,
     EntityAccountXero,
@@ -24,6 +20,10 @@ from shared_models.models import (
     ReportExpenseAttachment,
     XeroContactSync,
 )
+
+from petty_cash.tests.conftest import headers, make_entity, make_report, make_user, url
+from petty_cash.tests.test_close import D3, _ready, _submit
+from petty_cash.tests.test_expenses import JPEG, PNG, lists, s3  # noqa: F401  (fixtures)
 
 pytestmark = pytest.mark.django_db
 
@@ -326,7 +326,7 @@ def test_fixed_a_new_receipt_replaces_the_line_s_and_the_old_file_goes_after_the
     new = Attachment.objects.get(file_path=key)
     assert (new.original_name, new.mime_type, new.uploaded_by) == ("new.png", "image/jpeg", shop.owner.id)
     [shown] = resp.json()["expenses"]["lines"][0]["receipts"]
-    assert shown["id"] == new.id and shown["name"] == "new.png"
+    assert shown["id"] == str(new.id) and shown["name"] == "new.png"
 
 
 def test_a_file_another_line_still_uses_stays(client, shop, day, s3, django_capture_on_commit_callbacks):  # noqa: F811
