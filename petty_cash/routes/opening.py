@@ -43,7 +43,7 @@ from petty_cash.services.reports import (
 router = Router()
 
 # Owner 2026-10-21: never a silent "$" - a company with no currency picks one before any report.
-NO_CURRENCY = "No currency is selected for this company. Choose one in Petty Cash Settings to start a report."
+NO_CURRENCY = "No currency is selected for this company. Choose one in Entity & Integration to start a report."
 
 
 def opening_payload(entity_id, selected) -> dict:

@@ -1,16 +1,16 @@
-"""Petty Cash settings - Flask's ``petty_cash_api/routes/settings.py``: Country & currency and the
-Electronic / Delivery sales methods here; the Xero cards forwarded to Flask.
+"""Petty Cash settings - Flask's ``petty_cash_api/routes/settings.py``: the Electronic / Delivery
+sales methods here; the Xero cards forwarded to Flask. The country and currency are not set here
+(owner, 2026-11-03): minty-web's Entity & Integration tab is their one place.
 
-- ``GET /settings``: the country and currency with the lists offered, the two method lists, the
-  catalogue methods not on them, whether Xero is connected, and what this person may change.
-- ``PUT /settings/country`` ``{country_code, currency_id}``.
+- ``GET /settings``: the two method lists, the catalogue methods not on them, whether Xero is
+  connected, and what this person may change.
 - ``POST /sales-methods`` ``{type, sale_info_id | name}``, ``PUT /sales-methods/{id}`` ``{name}``,
   ``DELETE /sales-methods/{id}``, ``PUT /sales-methods/order`` ``{type, method_ids}``.
 - ``GET /settings/xero``, ``PUT /settings/xero/mapping``, ``PUT /settings/xero/account-codes``: the
   Xero cards, which check the connection live and refresh from Xero, so Flask does them
   (``core/accounts_api.py::forward_xero_settings``, the owner's choice: this service holds no Xero
   code) and its answer comes back unchanged. The rights are checked here first (``COA_VIEW`` to
-  read, ``COUNTRY_RIGHTS`` to save; 403, no call); the connection, the 409s and 422s are Flask's.
+  read, ``XERO_RIGHTS`` to save; 403, no call); the connection, the 409s and 422s are Flask's.
 
 Every write answers the whole settings payload with a ``message``. Name lengths are the schema's -
 ``sale_info.sale_name`` and ``value_name`` are 80 characters, and a new method's ``value_name`` is
@@ -35,13 +35,10 @@ from petty_cash.services.settings import (
     SettingsRefused,
     add_method,
     available,
-    checked_country_currency,
-    country_currency_choices,
     methods,
     remove_method,
     rename_method,
     reorder_methods,
-    save_country_currency,
 )
 
 router = Router()
@@ -52,8 +49,8 @@ NO_VIEW = "You don't have permission to see these settings."
 ADD_NAME_MAX = 80 - len("_sales")
 #: a rename changes sale_name only
 RENAME_NAME_MAX = 80
-#: the Settings page's Save, which writes the country only with all four
-COUNTRY_RIGHTS = ("ENTITY_UPDATE", "COA_UPDATE", "COA_CREATE", "COA_DELETE")
+#: the Xero cards' saves, only with all four
+XERO_RIGHTS = ("ENTITY_UPDATE", "COA_UPDATE", "COA_CREATE", "COA_DELETE")
 NO_RIGHT = "You don't have permission to change these settings. Ask an Accountant or an Admin."
 NOT_FOUND = "That sales method isn't on this company's list."
 
@@ -89,12 +86,11 @@ def settings_payload(request) -> dict:
     org = Entity.objects.get(id=entity_id)
     may_view_sales = _may(request, "SALES_METHOD_VIEW")
     return {
-        "country": country_currency_choices(org),
         "sales_methods": methods(entity_id) if may_view_sales else {t: [] for t in TYPES},
         "available": available(entity_id) if may_view_sales else {t: [] for t in TYPES},
         "xero_connected": bool(org.xero_org_id),
         "permissions": {
-            "edit_country": _may(request, *COUNTRY_RIGHTS),
+            "edit_xero": _may(request, *XERO_RIGHTS),
             "view_sales_methods": may_view_sales,
             "add_sales_method": _may(request, "SALES_METHOD_CREATE"),
             "rename_sales_method": _may(request, "SALES_METHOD_UPDATE"),
@@ -131,7 +127,7 @@ def xero_settings(request):
 def save_xero_mapping(request):
     """``{main_bank, deposit_bank, cashsale_account, cashsale_contact, owners_account,
     owners_contact, discrepancy_account, discrepancy_contact}`` - Xero ids from the read's options."""
-    if not _may(request, *COUNTRY_RIGHTS):
+    if not _may(request, *XERO_RIGHTS):
         raise Refused(NO_RIGHT, 403)
     return _xero(request, "mapping", _body(request))
 
@@ -139,7 +135,7 @@ def save_xero_mapping(request):
 @router.put("/settings/xero/account-codes")
 def save_xero_account_codes(request):
     """``{codes: [..]}``: exactly these account codes ticked for Petty Cash (at least one)."""
-    if not _may(request, *COUNTRY_RIGHTS):
+    if not _may(request, *XERO_RIGHTS):
         raise Refused(NO_RIGHT, 403)
     return _xero(request, "account-codes", _body(request))
 
@@ -147,20 +143,6 @@ def save_xero_account_codes(request):
 def _xero(request, action: str, body):
     answer, status = forward_xero_settings(request.company.id, request.auth_user.id, action, body)
     return JsonResponse(answer, status=status)
-
-
-@router.put("/settings/country")
-def save_country(request):
-    if not _may(request, *COUNTRY_RIGHTS):
-        raise Refused(NO_RIGHT, 403)
-    data = _body(request)
-    if not str(data.get("country_code") or "").strip() and not str(data.get("currency_id") or "").strip():
-        raise Refused("Choose a country or a currency to save.", 422)
-    try:
-        save_country_currency(request.company.id, checked_country_currency(data))
-    except SettingsRefused as refused:
-        raise Refused(refused.message, refused.status) from None
-    return _answer(request, "Country and currency saved.")
 
 
 @router.post("/sales-methods")

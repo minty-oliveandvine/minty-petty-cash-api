@@ -1,7 +1,6 @@
-"""Petty Cash settings without Xero - Country & currency and the Electronic / Delivery sales methods -
-ported from Flask's ``entity/services/country_currency.py``, ``xero_account_mapping_post.
-apply_country_currency_selection``, ``entity/services/cash_settings.sync_cash_settings`` and
-``entity/services/payment_methods.py``.
+"""Petty Cash settings without Xero - the Electronic / Delivery sales methods - ported from Flask's
+``entity/services/payment_methods.py``. The country and currency are not set here: they belong to
+minty-web's Entity & Integration tab (Flask's ``PATCH /api/me/company/integration``).
 
 A company's methods are links (``entity_sale_setting``: on/off, order) into one catalogue
 (``sale_info``) every company shares: a method nobody has yet adds a catalogue row for everyone, and
@@ -12,21 +11,12 @@ report, never here.
 from __future__ import annotations
 
 import logging
-import uuid
 
 from django.db import transaction
-from django.db.models import F, Max, Q
+from django.db.models import F, Max
 from django.db.models.functions import Lower
 from minty_db.enums import SaleType
-from minty_db.models import (
-    CashInfo,
-    CountryInfo,
-    CurrencyInfo,
-    Entity,
-    EntityCashSetting,
-    EntitySaleSetting,
-    SaleInfo,
-)
+from minty_db.models import EntitySaleSetting, SaleInfo
 
 logger = logging.getLogger("petty-cash-api")
 
@@ -38,84 +28,6 @@ class SettingsRefused(Exception):
         super().__init__(message)
         self.message = message
         self.status = status
-
-
-# --- Country & currency ------------------------------------------------------------------------------
-
-
-def country_currency_choices(org: Entity) -> dict:
-    """The lists the card offers - active rows, plus the company's own even if since deactivated
-    (a blank field would read as "unset") - and the current selection in each."""
-    countries = list(
-        CountryInfo.objects.filter(Q(is_active=True) | Q(country_code=org.country_code))
-        .order_by("display_order", "country_name_en").values_list("country_code", "country_name_en")
-    )
-    currencies = list(
-        CurrencyInfo.objects.filter(Q(is_active=True) | Q(id=org.currency_id))
-        .order_by("currency_name").values_list("id", "currency_name")
-    )
-    return {
-        "country_code": org.country_code,
-        "currency_id": str(org.currency_id) if org.currency_id else None,
-        "countries": [{"code": code, "name": name} for code, name in countries],
-        "currencies": [{"id": str(cid), "name": name} for cid, name in currencies],
-        "selected_country": next((name for code, name in countries if code == org.country_code), None),
-        "selected_currency": next((name for cid, name in currencies if str(cid) == str(org.currency_id)), None),
-    }
-
-
-def checked_country_currency(data: dict) -> dict:
-    """The ``country_code`` / ``currency_id`` a save sent, checked against the registries - an
-    unknown one is refused (422), never skipped."""
-    fields = {}
-    country_code = str(data.get("country_code") or "").strip().upper()
-    if country_code:
-        if not CountryInfo.objects.filter(country_code=country_code).exists():
-            raise SettingsRefused("Pick one of the countries offered.", 422)
-        fields["country_code"] = country_code
-    currency_id = str(data.get("currency_id") or "").strip()
-    if currency_id:
-        try:
-            uuid.UUID(currency_id)
-        except ValueError:
-            raise SettingsRefused("Pick one of the currencies offered.", 422) from None
-        if not CurrencyInfo.objects.filter(id=currency_id).exists():
-            raise SettingsRefused("Pick one of the currencies offered.", 422)
-        fields["currency_id"] = currency_id
-    return fields
-
-
-def sync_cash_settings(entity_id, currency_id) -> None:
-    """``entity_cash_setting`` holds the currency's active denominations: new ones added (on, in the
-    catalogue's order), others deleted, the company's own choices on the ones kept untouched."""
-    wanted = dict(CashInfo.objects.filter(currency_id=currency_id, is_active=True).values_list("id", "display_order"))
-    existing = set(EntityCashSetting.objects.filter(entity_id=entity_id).values_list("cash_id", flat=True))
-    EntityCashSetting.objects.filter(entity_id=entity_id).exclude(cash_id__in=list(wanted)).delete()
-    EntityCashSetting.objects.bulk_create([
-        EntityCashSetting(entity_id=entity_id, cash_id=cash_id, is_active=True, display_order=order)
-        for cash_id, order in wanted.items() if cash_id not in existing
-    ])
-    if not wanted:
-        logger.warning("cash settings: currency %s has no active denominations (company %s)", currency_id, entity_id)
-
-
-@transaction.atomic
-def save_country_currency(entity_id, fields: dict) -> None:
-    """Flask's ``apply_country_currency_selection``: the country, then the currency chosen - or, with
-    none chosen, the country's own - and the denominations that follow it. One transaction."""
-    org = Entity.objects.select_for_update().get(id=entity_id)
-    country = CountryInfo.objects.filter(country_code=fields["country_code"]).first() if "country_code" in fields else None
-    if country is not None:
-        org.country_code = country.country_code
-    currency = CurrencyInfo.objects.filter(id=fields["currency_id"]).first() if "currency_id" in fields else None
-    if currency is None and country is not None and country.currency_id:
-        currency = CurrencyInfo.objects.filter(id=country.currency_id).first()
-    if currency is not None:
-        org.currency_id = currency.id
-        org.currency_format = currency.symbol or "$"
-    org.save(update_fields=["country_code", "currency_id", "currency_format"])
-    if currency is not None:
-        sync_cash_settings(org.id, currency.id)
 
 
 # --- Sales methods -----------------------------------------------------------------------------------

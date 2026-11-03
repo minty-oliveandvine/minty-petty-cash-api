@@ -1,20 +1,16 @@
 """Petty Cash settings (``petty_cash/routes/settings.py``) - Flask's
 ``tests/test_petty_cash_api_settings.py`` expectations, restated, plus what Flask's suite doesn't
 pin: the name limits the schema allows (a deliberate difference - Flask's 100-character check let a
-75-100 character name through to a database error), the rename refusals, and the denominations
-following a currency change."""
+75-100 character name through to a database error) and the rename refusals. The country and currency
+are not set here: minty-web's Entity & Integration tab is their one place."""
 
 from __future__ import annotations
 
-from decimal import Decimal
-
 import pytest
-from minty_db.enums import CashType, EntityRole, SaleType
+from minty_db.enums import EntityRole, SaleType
 from minty_db.models import (
-    CashInfo,
     CountryInfo,
     Entity,
-    EntityCashSetting,
     EntitySaleSetting,
     SaleInfo,
     UserEntity,
@@ -69,12 +65,11 @@ def test_the_settings_read(client, shop, methods):
 
     assert resp.status_code == 200, resp.json()
     body = resp.json()
-    assert body["country"]["country_code"] == "HK" and body["country"]["currency_id"] == str(shop.currency.id)
-    assert {c["code"] for c in body["country"]["countries"]} == {"HK", "SG"}
-    assert body["country"]["selected_country"] == "Hong Kong" and body["country"]["selected_currency"] == "HKD"
+    assert "country" not in body
     assert names(body, "electronic") == ["Visa", "Alipay"] and names(body, "delivery") == ["Foodpanda"]
     assert {m["name"]: m["shared"] for m in body["sales_methods"]["electronic"]} == {"Visa": False, "Alipay": False}
     assert body["xero_connected"] is False and all(body["permissions"].values())
+    assert "edit_xero" in body["permissions"] and "edit_country" not in body["permissions"]
 
 
 def test_a_method_another_company_uses_is_marked_shared(client, shop, methods):
@@ -109,52 +104,16 @@ def test_a_base_member_cannot_open_settings(client, shop, methods):
     assert resp.status_code == 403
 
 
-# --- country & currency ------------------------------------------------------------------------------
+# --- country & currency: not here ---------------------------------------------------------------------
 
 
-def test_saving_the_country_brings_its_currency_and_its_notes_and_coins(client, shop, methods):
-    sgd = CountryInfo.objects.get(country_code="SG").currency_id
-    ten = CashInfo.objects.create(currency_id=sgd, cash_value=Decimal("10"), type=CashType.NOTE, display_order=1)
-    hkd_note = CashInfo.objects.create(currency_id=shop.currency.id, cash_value=Decimal("20"), type=CashType.NOTE,
-                                       display_order=1)
-    EntityCashSetting.objects.create(entity_id=shop.entity.id, cash_id=hkd_note.id, is_active=True, display_order=1)
+def test_the_country_and_currency_are_not_set_here(client, shop, methods):
+    """Entity & Integration (minty-web, through Flask) is their one place (owner, 2026-11-03)."""
+    resp = call(client, shop, "put", "/settings/country", {"country_code": "SG"})
 
-    resp = call(client, shop, "put", "/settings/country", {"country_code": "sg"})
-
-    assert resp.status_code == 200, resp.json()
-    body = resp.json()
-    assert body["message"] == "Country and currency saved."
-    assert (body["country"]["country_code"], body["country"]["currency_id"]) == ("SG", str(sgd))
+    assert resp.status_code in (404, 405)
     org = Entity.objects.get(id=shop.entity.id)
-    assert org.currency_format == "$"
-    assert list(EntityCashSetting.objects.filter(entity_id=org.id).values_list("cash_id", flat=True)) == [ten.id]
-
-
-def test_an_explicit_currency_wins_over_the_countrys(client, shop, methods):
-    eur = make_currency("EUR")
-
-    call(client, shop, "put", "/settings/country", {"country_code": "SG", "currency_id": str(eur.id)})
-
-    org = Entity.objects.get(id=shop.entity.id)
-    assert (org.country_code, org.currency_id) == ("SG", eur.id)
-
-
-@pytest.mark.parametrize("body, message", [
-    ({}, "Choose a country or a currency to save."),
-    ({"country_code": "ZZ"}, "Pick one of the countries offered."),
-    ({"currency_id": "not-a-uuid"}, "Pick one of the currencies offered."),
-    ({"currency_id": "6d0b6d55-0000-4000-8000-000000000000"}, "Pick one of the currencies offered."),
-])
-def test_a_bad_country_or_currency_is_refused(client, shop, methods, body, message):
-    resp = call(client, shop, "put", "/settings/country", body)
-
-    assert resp.status_code == 422 and resp.json() == {"error": message}
-
-
-def test_a_cashier_may_not_change_the_country(client, shop, methods):
-    resp = call(client, shop, "put", "/settings/country", {"country_code": "SG"}, user=member(shop, EntityRole.CASHIER))
-
-    assert resp.status_code == 403 and Entity.objects.get(id=shop.entity.id).country_code == "HK"
+    assert (org.country_code, org.currency_id) == ("HK", shop.currency.id)
 
 
 # --- sales methods -----------------------------------------------------------------------------------

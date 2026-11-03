@@ -910,26 +910,6 @@
         ]
       }
     },
-    "/api/petty-cash/v1/companies/{entity_id}/settings/country": {
-      "put": {
-        "operationId": "petty_cash_routes_settings_save_country",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        },
-        "security": [
-          {
-            "PettyCashBearerAuth": []
-          }
-        ],
-        "summary": "Save Country",
-        "tags": [
-          "Settings"
-        ]
-      }
-    },
     "/api/petty-cash/v1/companies/{entity_id}/settings/xero": {
       "get": {
         "operationId": "petty_cash_routes_settings_xero_settings",
