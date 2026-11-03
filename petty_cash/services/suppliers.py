@@ -10,7 +10,7 @@ import logging
 
 import requests
 from django.conf import settings
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from minty_db.models import Entity, XeroContactSync
 
 from core.xero_tokens import XeroTokenUnavailable, xero_token
@@ -79,9 +79,15 @@ def create_supplier(entity_id, name: str) -> XeroContactSync:
     with transaction.atomic():
         row = XeroContactSync.objects.filter(entity_id=entity_id, xero_contact_id=xero_contact_id).first()
         if row is None:
-            row = XeroContactSync.objects.create(entity_id=entity_id, xero_contact_id=xero_contact_id,
-                                                 xero_org_id=entity.xero_org_id, name=created_name)
-        else:
+            try:
+                with transaction.atomic():
+                    row = XeroContactSync.objects.create(entity_id=entity_id, xero_contact_id=xero_contact_id,
+                                                         xero_org_id=entity.xero_org_id, name=created_name)
+            except IntegrityError:
+                # Flask's sync stored the same contact since the look-up (uq_xcs_entity_contact,
+                # 2026-11-03): that row is this supplier.
+                row = XeroContactSync.objects.get(entity_id=entity_id, xero_contact_id=xero_contact_id)
+        if row.name != created_name:
             row.name = created_name
             row.save(update_fields=["name"])
     logger.info("Supplier %s added for company %s", xero_contact_id, entity_id)

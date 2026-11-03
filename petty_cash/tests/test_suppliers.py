@@ -176,3 +176,34 @@ def test_a_member_without_the_right_is_refused(client, connected, http):
     resp = _post(client, connected, {"name": "Corner Bakery"}, user=base)
 
     assert resp.status_code == 403 and http.sent == []
+
+
+def test_a_sync_storing_the_same_contact_first_is_not_an_error(client, connected, http, monkeypatch):
+    """2026-11-03: one row per Xero contact per company (``uq_xcs_entity_contact``). Flask's
+    sync can store the new contact between the look-up and the insert; the insert then meets
+    the key, and the row the sync wrote is the supplier - renamed, never a second row or a 500."""
+    from django.db import IntegrityError
+
+    XeroContactSync.objects.create(entity_id=connected.entity.id, xero_contact_id="con-new",
+                                   xero_org_id=ORG, name="From the sync")
+    manager = XeroContactSync.objects
+    real_filter, looked = manager.filter, []
+
+    def before_the_sync(*args, **kwargs):  # the look-up ran before the sync committed
+        found = real_filter(*args, **kwargs)
+        if not looked:
+            looked.append(True)
+            return found.none()
+        return found
+
+    def meets_the_key(**_values):
+        raise IntegrityError('duplicate key value violates unique constraint "uq_xcs_entity_contact"')
+
+    monkeypatch.setattr(manager, "filter", before_the_sync)
+    monkeypatch.setattr(manager, "create", meets_the_key)
+    resp = _post(client, connected, {"name": "Corner Bakery"})
+
+    assert resp.status_code == 201, resp.content
+    assert resp.json() == {"id": "con-new", "name": "Corner Bakery"}
+    monkeypatch.undo()
+    assert _synced(connected) == {"con-new": "Corner Bakery"}
