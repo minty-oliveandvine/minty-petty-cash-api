@@ -3,26 +3,23 @@
 
 The key is ``expenses/<report id>/<DD_MON_YYYY>_<ITEM>_<rounded amount>[_n].<ext>``; a name already
 in use by another attachment gets a short unique suffix (the second of two lines alike used to
-overwrite the first one's receipt); a PNG re-encoded to JPEG by the downsizing is stored under a
-``.jpg`` key. Uploads retry twice (1 s, 2 s). One client per process (``settings.S3``).
+overwrite the first one's receipt). The bytes are stored exactly as uploaded, with no downsizing or
+conversion (owner, 2026-11-04), through ``minty_shared.storage.put_file``, which retries twice
+(1 s, 2 s). One client per process (``settings.S3``).
 """
 
 from __future__ import annotations
 
-import io
 import logging
 import os
-import time
 import uuid
 from functools import lru_cache
 
-import boto3
-from botocore.config import Config
 from botocore.exceptions import ClientError
 from django.conf import settings
 from minty_db.models import Attachment
+from minty_shared.storage import make_client, put_file
 
-from petty_cash.files.downsize import downsize_bytes
 from petty_cash.files.receipt_keys import safe_extension, safe_stem
 
 logger = logging.getLogger("petty-cash-api")
@@ -46,14 +43,7 @@ def sniff_mime(data: bytes) -> str | None:
 @lru_cache(maxsize=1)
 def client():
     s3 = settings.S3
-    return boto3.client(
-        "s3",
-        aws_access_key_id=s3["key"],
-        aws_secret_access_key=s3["secret"],
-        region_name=s3["region"],
-        endpoint_url=s3["endpoint_url"] or None,
-        config=Config(signature_version="s3v4"),
-    )
+    return make_client(key=s3["key"], secret=s3["secret"], region=s3["region"], endpoint_url=s3["endpoint_url"])
 
 
 def bucket() -> str:
@@ -73,28 +63,13 @@ def receipt_key(report, filename: str, description: str, amount, *, file_index=N
 
 
 def upload_receipt(data: bytes, mime: str, report, *, filename: str, description: str, amount,
-                   file_index=None, max_retries: int = 2) -> tuple[str, str, int]:
-    """Store a receipt's bytes (downsized) and return ``(key, stored mime type, stored size)``."""
+                   file_index=None) -> tuple[str, str, int]:
+    """Store a receipt's bytes as uploaded and return ``(key, mime type, size)``."""
     key = receipt_key(report, filename, description, amount, file_index=file_index)
-    downsized, out_mime = downsize_bytes(data, mime or "")
-    if out_mime == "image/jpeg" and not key.lower().endswith((".jpg", ".jpeg")):
-        key = os.path.splitext(key)[0] + ".jpg"
     if Attachment.objects.filter(file_path=key).exists():
         stem, extension = os.path.splitext(key)
         key = f"{stem}_{uuid.uuid4().hex[:6].upper()}{extension}"
-
-    last_error = None
-    for attempt in range(max_retries + 1):
-        try:
-            client().upload_fileobj(io.BytesIO(downsized), bucket(), key)
-            return key, out_mime or mime, len(downsized)
-        except Exception as exc:  # noqa: BLE001 - any transport failure is retried, then raised
-            last_error = exc
-            if attempt < max_retries:
-                logger.warning("Retry %s/%s for %s: %s", attempt + 1, max_retries, key, exc)
-                time.sleep(2**attempt)
-    logger.error("Upload of %s failed after %s attempts: %s", key, max_retries + 1, last_error)
-    raise last_error
+    return key, mime, put_file(client(), bucket(), key, data, content_type=mime or "application/octet-stream")
 
 
 def delete_files(keys) -> None:

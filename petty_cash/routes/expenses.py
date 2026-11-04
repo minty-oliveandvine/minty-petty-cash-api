@@ -11,7 +11,7 @@
   account, its receipt replaced or some receipts removed - checked as adding is
   (``services/expenses.py::update_expense``, Flask's ``update_expense``).
 - ``POST /reports/expenses/extract`` (multipart ``receipt``): the model's suggestions for a line,
-  read by Flask (``core/accounts_api.py::forward_expense_extract``) - nothing is written.
+  read here (``services/receipt_reader.py`` on ``minty_shared.ai``) - nothing is written.
 - ``GET /expense-lines/{id}/receipts/{attachment id}``: the receipt's bytes - by id, never by key.
 - ``PUT /reports/expenses`` ``{transaction_date, action}``: the step's Save & Next / Save & Exit.
 - ``POST /suppliers`` ``{name}``: a new supplier, created in the company's Xero organisation
@@ -38,7 +38,6 @@ from minty_db.models import (
 )
 from ninja import Router
 
-from core.accounts_api import forward_expense_extract
 from core.exceptions import Refused
 from core.policy import Permission, can_delete_report, can_view_report, has_permission
 from petty_cash.days import parse_day
@@ -52,6 +51,7 @@ from petty_cash.routes._input import (
     query_day,
     require_edit,
 )
+from petty_cash.services import receipt_reader
 from petty_cash.services.expenses import (
     KEEP_A_RECEIPT,
     NOT_A_DRAFT,
@@ -306,10 +306,11 @@ def expense_receipt(request, line_id: str, attachment_id: str):
 
 @router.post("/reports/expenses/extract")
 def extract_expense(request):
-    """Multipart ``receipt`` -> the model's suggestions for a line, read by Flask (this service holds
-    no model code; ``core/accounts_api.py::forward_expense_extract``). Who may ask (403) and the file
-    (422) are checked here first, with Flask's sentences, so a refusal never leaves this service;
-    Flask checks both again. Every other outcome is 200 ``{suggestions, reason}``."""
+    """Multipart ``receipt`` -> the model's suggestions for a line (``services/receipt_reader.py``,
+    on the engine shared with Payment Request's invoice reader). Who may ask (403) and the file
+    (422) are refused with the Expenses step's sentences; past those, every outcome is 200
+    ``{suggestions, reason}`` - switched off, rate limited, too large, no accounts or suppliers, or
+    any failure of the model is ``suggestions: null`` with a reason. Nothing is written."""
     require_edit(request)
     uploads = [f for f in request.FILES.getlist("receipt") if f and (f.name or "").strip()]
     if not uploads:
@@ -317,11 +318,10 @@ def extract_expense(request):
     if len(uploads) > 1:
         raise Refused("Attach one receipt at a time.", 422)
     try:
-        data, mime, name = checked_receipt(uploads[0])
+        data, mime, _ = checked_receipt(uploads[0])
     except ExpenseRefused as refused:
         raise Refused(refused.message, 422) from None
-    answer, status = forward_expense_extract(request.company.id, request.auth_user.id, data, mime, name)
-    return JsonResponse(answer, status=status)
+    return JsonResponse(receipt_reader.read_receipt(request.company.id, request.auth_user.id, data, mime))
 
 @router.put("/reports/expenses")
 def save_expenses_step_route(request):

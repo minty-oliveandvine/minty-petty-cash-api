@@ -15,8 +15,9 @@ defined once in [`minty-shared-py`](https://github.com/minty-oliveandvine/minty-
 |---|---|---|
 | `petty-cash-api` | everything the service logs | `logs/core.log` |
 | `petty-cash-api.http` | one access line per request, `METHOD path status ms`, the path through `loggable_path` (a share link's secret is `[redacted]`) (does not propagate) | `logs/api.log` |
+| `minty-shared` | minty-shared-py's own lines: the receipt reader's one line per read (`minty_shared.ai`: numbers only, never a value off the receipt) and storage's upload retries (`minty_shared.storage`). Added 2026-11-04 - without it their INFO lines were written nowhere | `logs/core.log` |
 
-Both also go to stderr, which is what Render keeps.
+All three also go to stderr, which is what Render keeps.
 
 - **trace**: `core.middleware.RequestLoggingMiddleware` opens one per request. An incoming
   `X-Request-ID` of 8-32 lowercase hex digits is kept; anything else (missing, uppercase, a

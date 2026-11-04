@@ -12,14 +12,12 @@ requests>=2.28,<3.0
 # The one log line every Minty backend writes (minty_shared.logctx). An immutable tag: a change
 # is a new tag, bumped in all five backends. The tag's archive, not git+: the slim Docker images
 # have no git.
-minty-shared @ https://github.com/minty-oliveandvine/minty-shared-py/archive/refs/tags/v0.2.tar.gz
+minty-shared[storage,ai] @ https://github.com/minty-oliveandvine/minty-shared-py/archive/refs/tags/v0.4.tar.gz
 # The schema's models (every table, generated from 01_schema_rebased.sql) and the test-database
 # builder. An immutable tag, pinned by archive like minty-shared.
 minty-db @ https://github.com/minty-oliveandvine/minty-db/archive/refs/tags/v0.4.tar.gz
-# Receipts: B2 through the S3 API, and Flask's downsizing (images with Pillow, PDFs with pikepdf).
+# Receipts: B2 through the S3 API (minty_shared.storage), stored as uploaded.
 boto3>=1.35,<2.0
-Pillow>=11.0,<12.0
-pikepdf>=9.4,<10.0
 
 # Dev / testing
 pytest>=8.0

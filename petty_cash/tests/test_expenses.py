@@ -4,7 +4,10 @@ the S3 client (``petty_cash/files/storage.client``)."""
 
 from __future__ import annotations
 
+import os
+import struct
 import uuid
+import zlib
 from datetime import timedelta
 from decimal import Decimal
 from io import BytesIO
@@ -43,6 +46,7 @@ class FakeS3:
 
     def upload_fileobj(self, fileobj, bucket, key, **kwargs):
         self.objects[key] = fileobj.read()
+        self.extra_args = kwargs.get("ExtraArgs")
 
     def get_object(self, *, Bucket, Key, **kwargs):
         return {"Body": BytesIO(self.objects[Key])}
@@ -178,8 +182,39 @@ def test_a_line_is_stored_with_its_receipt_as_its_bytes_say(client, shop, lists,
     assert key.startswith(f"expenses/{draft.id}/") and key.endswith("_ADVERTISING_1012.jpg")
     history = list(ReportHistory.objects.filter(report_id=draft.id).values_list("action", "new_value"))
     assert history == [("added", "Added expense: Advertising (HKD 1,012.50)")]
-    # 2026-11-03: the row said nothing of its size; it is the stored (downsized) file's
+    # 2026-11-03: the row said nothing of its size; it is the stored file's
     assert Attachment.objects.get(file_path=key).file_size == len(s3.objects[key])
+
+
+def _big_png(side=800) -> bytes:
+    """A real PNG of noise, over 1 MB: the size that used to be shrunk and re-encoded as JPEG."""
+    raw = b"".join(b"\x00" + os.urandom(side * 3) for _ in range(side))
+
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+
+    header = struct.pack(">IIBBBBB", side, side, 8, 2, 0, 0, 0)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
+
+
+def test_a_large_receipt_is_stored_exactly_as_uploaded(client, shop, lists, s3):
+    """2026-11-04 (owner): no downsizing and no conversion - B2 holds the person's file byte for byte."""
+    _draft(shop)
+    png = _big_png()
+    assert len(png) > 1024 * 1024
+    form = {"transaction_date": D3.isoformat(), "amount": "12.40", "remarks": "Flyers",
+            "supplier_id": "con-0001", "account_id": "acc-0001",
+            "receipt": SimpleUploadedFile("big-slip.png", png, content_type="image/png")}
+
+    resp = client.post(url(shop.entity.id, "/reports/expenses/lines"), form, headers=headers(shop.owner.id))
+
+    assert resp.status_code == 201, resp.content
+    [key] = s3.objects
+    assert s3.objects[key] == png and key.endswith(".png")
+    assert s3.extra_args == {"ContentType": "image/png"}
+    row = Attachment.objects.get(file_path=key)
+    assert row.mime_type == "image/png" and row.file_size == len(png)
+    assert resp.json()["line"]["receipts"][0]["mime_type"] == "image/png"
 
 
 def test_two_lines_alike_keep_their_own_receipts(client, shop, lists, s3):

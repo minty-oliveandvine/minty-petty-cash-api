@@ -329,7 +329,7 @@
     },
     "/api/petty-cash/v1/companies/{entity_id}/reports/expenses/extract": {
       "post": {
-        "description": "Multipart ``receipt`` -> the model's suggestions for a line, read by Flask (this service holds\nno model code; ``core/accounts_api.py::forward_expense_extract``). Who may ask (403) and the file\n(422) are checked here first, with Flask's sentences, so a refusal never leaves this service;\nFlask checks both again. Every other outcome is 200 ``{suggestions, reason}``.",
+        "description": "Multipart ``receipt`` -> the model's suggestions for a line (``services/receipt_reader.py``,\non the engine shared with Payment Request's invoice reader). Who may ask (403) and the file\n(422) are refused with the Expenses step's sentences; past those, every outcome is 200\n``{suggestions, reason}`` - switched off, rate limited, too large, no accounts or suppliers, or\nany failure of the model is ``suggestions: null`` with a reason. Nothing is written.",
         "operationId": "petty_cash_routes_expenses_extract_expense",
         "parameters": [],
         "responses": {

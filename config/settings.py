@@ -122,7 +122,9 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = MAX_RECEIPT_BYTES + 1024 * 1024
 LOG_DIR = BASE_DIR / "logs"
 
 LOGGING = logging_config(
-    {"petty-cash-api": "core.log", "petty-cash-api.http": "api.log"},
+    # minty-shared: the receipt reader's one log line and storage's retries (minty_shared.ai,
+    # .storage) - unconfigured, their INFO lines were never written anywhere.
+    {"petty-cash-api": "core.log", "petty-cash-api.http": "api.log", "minty-shared": "core.log"},
     log_dir=LOG_DIR,
     no_propagate=["petty-cash-api.http"],
     level=os.environ.get("LOG_LEVEL", "INFO"),
