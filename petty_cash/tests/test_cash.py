@@ -110,7 +110,7 @@ def test_save_next_stores_the_deposit_and_moves_on(client, shop):
     row = _row(draft)
     assert row.bank_deposit == Decimal("100.50") and row.closing_balance == Decimal("54.50")
     assert row.completed_sections == ["opening", "sales", "expenses", "deposit"]
-    assert _history(draft) == [("bank_deposit", "Bank Deposit: $100.5")]
+    assert _history(draft) == [("bank_deposit", "Bank Deposit: HKD 100.50")]
 
 
 def test_save_exit_stores_the_deposit_without_moving_on(client, shop):
@@ -213,7 +213,7 @@ def test_an_exact_count_moves_on_to_ending(client, shop, notes):
     assert row.completed_sections == ["opening", "sales", "expenses", "deposit", "cash_count"]
     assert row.current_section == "ending"
     assert row.closing_balance == 55  # the count never writes it; submit adds the difference
-    assert _history(draft) == [("cash_count", "Cash Count: $55.0")]
+    assert _history(draft) == [("cash_count", "Cash Count: HKD 55.00")]
 
 
 def test_a_short_count_is_negative_and_the_safebox_counts_towards_it(client, shop, notes):
@@ -363,7 +363,7 @@ def test_the_deposit_and_the_count_are_saved_together(client, shop, notes):
     assert row.bank_deposit == 100 and row.discrepancy_type == "none"
     assert row.completed_sections == ["opening", "sales", "expenses", "deposit", "cash_count"]
     assert row.current_section == "ending"
-    assert _history(draft) == [("bank_deposit", "Bank Deposit: $100.0"), ("cash_count", "Cash Count: $55.0")]
+    assert _history(draft) == [("bank_deposit", "Bank Deposit: HKD 100.00"), ("cash_count", "Cash Count: HKD 55.00")]
 
 
 def test_a_refused_count_leaves_the_deposit_unsaved_too(client, shop, notes):

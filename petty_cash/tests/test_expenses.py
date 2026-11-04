@@ -177,7 +177,9 @@ def test_a_line_is_stored_with_its_receipt_as_its_bytes_say(client, shop, lists,
     [key] = s3.objects
     assert key.startswith(f"expenses/{draft.id}/") and key.endswith("_ADVERTISING_1012.jpg")
     history = list(ReportHistory.objects.filter(report_id=draft.id).values_list("action", "new_value"))
-    assert history == [("added", "Added expense: Advertising ($1012.5)")]
+    assert history == [("added", "Added expense: Advertising (HKD 1,012.50)")]
+    # 2026-11-03: the row said nothing of its size; it is the stored (downsized) file's
+    assert Attachment.objects.get(file_path=key).file_size == len(s3.objects[key])
 
 
 def test_two_lines_alike_keep_their_own_receipts(client, shop, lists, s3):
@@ -378,7 +380,7 @@ def test_a_draft_line_is_changed_in_place_and_the_totals_follow(client, shop, li
     assert row.expense_total == Decimal("1249.50")
     assert row.closing_balance == Decimal("100") + 20 + 50 - Decimal("1249.50") - 5
     history = list(ReportHistory.objects.filter(report_id=draft.id).values_list("action", "new_value"))
-    assert history == [("updated", "updated to amount: $1234.5")]
+    assert history == [("updated", "updated to amount: HKD 1,234.50")]
     assert resp["Access-Control-Allow-Origin"] == WEB
 
 

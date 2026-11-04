@@ -21,7 +21,13 @@ import logging
 
 from django.db import transaction
 from minty_db.enums import ReportStatus
-from minty_db.models import Report, ReportExpense
+from minty_db.models import (
+    Attachment,
+    Report,
+    ReportExpense,
+    ReportExpenseAttachment,
+    XeroContactSync,
+)
 
 from core.policy import Permission, has_permission
 from petty_cash.files import storage
@@ -32,6 +38,7 @@ from petty_cash.services.expenses import (
     replace_receipts,
     suppliers,
 )
+from petty_cash.services.reports import log_history
 
 logger = logging.getLogger("petty-cash-api")
 
@@ -98,8 +105,12 @@ def edit_difference_reason(report: Report, user, reason) -> str:
         kind = locked.discrepancy_type
         if not reason and kind in ("short", "over"):
             raise EditRefused(f"The cash was {kind}, so the reason is still needed. Add the reason to save it.", 422)
+        old = locked.discrepancy_reason or ""
         locked.discrepancy_reason = reason
         _save(locked, "discrepancy_reason")
+        if old != reason:
+            log_history(locked, user, action="updated", field_changed="discrepancy_reason", old_value=old,
+                        new_value=reason)
     return reason
 
 
@@ -112,9 +123,37 @@ def edit_withdrawal(report: Report, user, kind) -> str:
     # account on entity_pettycash_settings (schema item 13).
     with transaction.atomic():
         locked = _locked(report, user)
+        old = locked.cash_addition_type or ""
         locked.cash_addition_type = kind
         _save(locked, "cash_addition_type")
+        if old != kind:
+            log_history(locked, user, action="updated", field_changed="cash_addition_type", old_value=old,
+                        new_value=kind)
     return kind
+
+
+def _line_changes(row: ReportExpense, remarks, supplier, account, uploaded) -> tuple[list[str], list[str]]:
+    """What an edit changes on a line, as (before, after) phrases for its history row - only the
+    fields that really change."""
+    was, now = [], []
+    if remarks is not None and remarks != (row.remarks or ""):
+        was.append(f"description {row.remarks or ''}".rstrip())
+        now.append(f"description {remarks}".rstrip())
+    if supplier is not None and supplier.id != row.contact_id:
+        old = XeroContactSync.objects.filter(id=row.contact_id).values_list("name", flat=True).first()
+        was.append(f"supplier {old or 'none'}")
+        now.append(f"supplier {supplier.name}")
+    if account is not None and account.id != row.account_id:
+        was.append(f"account {row.item}")
+        now.append(f"account {account.name}")
+    if uploaded:
+        links = ReportExpenseAttachment.objects.filter(report_expense_id=row.id).order_by("sort_order")
+        names = dict(Attachment.objects.filter(id__in=links.values("attachment_id"))
+                     .values_list("id", "original_name"))
+        old = ", ".join(names.get(link.attachment_id) or "" for link in links) or "none"
+        was.append(f"receipt {old}")
+        now.append("receipt " + ", ".join(name for _, _, name, _ in uploaded))
+    return was, now
 
 
 def edit_expense_line(report: Report, line: ReportExpense, user, *, remarks=None, supplier_id=None,
@@ -147,17 +186,19 @@ def edit_expense_line(report: Report, line: ReportExpense, user, *, remarks=None
 
     item = account.name if account is not None else line.item
     description = item or (remarks if remarks is not None else line.remarks) or "EXPENSE"
-    uploaded = []  # (key, stored mime, original name)
+    uploaded = []  # (key, stored mime, original name, stored size)
     try:
         for i, (data, mime, name) in enumerate(checked):
-            key, stored_mime = storage.upload_receipt(
+            key, stored_mime, stored_size = storage.upload_receipt(
                 data, mime, report, filename=name, description=description, amount=line.amount,
                 file_index=i if len(checked) > 1 else None,
             )
-            uploaded.append((key, stored_mime, name))
+            uploaded.append((key, stored_mime, name, stored_size))
         with transaction.atomic():
             locked = _locked(report, user)
             row = ReportExpense.objects.select_for_update().get(id=line.id)
+            was, now = _line_changes(row, remarks, supplier, account, uploaded)
+            old_item = row.item
             fields = []
             if remarks is not None:
                 row.remarks = remarks
@@ -173,7 +214,10 @@ def edit_expense_line(report: Report, line: ReportExpense, user, *, remarks=None
             if uploaded:
                 replace_receipts(row, uploaded, user)
             _save(locked)
+            if was:
+                log_history(locked, user, action="updated", field_changed=f"expense_{row.id}",
+                            old_value=f"{old_item}: {', '.join(was)}", new_value=f"{row.item}: {', '.join(now)}")
     except BaseException:
-        storage.delete_files([key for key, _, _ in uploaded])
+        storage.delete_files([key for key, *_ in uploaded])
         raise
 

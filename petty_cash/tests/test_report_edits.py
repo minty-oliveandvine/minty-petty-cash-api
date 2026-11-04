@@ -325,6 +325,7 @@ def test_fixed_a_new_receipt_replaces_the_line_s_and_the_old_file_goes_after_the
     assert OLD_KEY not in s3.objects and not Attachment.objects.filter(id=old.id).exists()
     new = Attachment.objects.get(file_path=key)
     assert (new.original_name, new.mime_type, new.uploaded_by) == ("new.png", "image/jpeg", shop.owner.id)
+    assert new.file_size == len(s3.objects[key])  # 2026-11-03: it used to be empty
     [shown] = resp.json()["expenses"]["lines"][0]["receipts"]
     assert shown["id"] == str(new.id) and shown["name"] == "new.png"
 
@@ -370,3 +371,58 @@ def test_an_expense_line_of_another_report_or_company_is_not_found(client, shop,
         resp = _edit_line(client, shop, report_id, line_id, remarks="x")
         assert resp.status_code == 404 and resp.json() == {"error": "Hmm, I couldn't find that expense."}
     assert _line(line).remarks == "Flyers"
+
+
+# --- the history (2026-11-03) ---------------------------------------------------------------------------
+# An edit after submission changes what was submitted, so the report's history says so - who, what,
+# from and to - as every Daily Closing step does. The 2026-11-03 walk found these edits left none.
+
+
+def _edits(report) -> list[tuple]:
+    from minty_db.models import ReportHistory
+
+    return list(ReportHistory.objects.filter(report_id=report.id, action="updated")
+                .exclude(field_changed__in=("bank_deposit", "expense"))
+                .order_by("created_at").values_list("user_id", "field_changed", "old_value", "new_value"))
+
+
+def test_a_new_reason_is_in_the_history(client, shop, day):
+    report, _ = day
+    _set(report, discrepancy_amount=-5, discrepancy_type="short", discrepancy_reason="old")
+
+    assert _reason(client, shop, report.id, "recounted").status_code == 200
+
+    assert _edits(report) == [(shop.owner.id, "discrepancy_reason", "old", "recounted")]
+
+
+def test_a_new_withdrawal_source_is_in_the_history(client, shop, day):
+    report, _ = day
+    _set(report, cash_addition_type="personal")
+
+    assert _withdrawal(client, shop, report.id, "company").status_code == 200
+
+    assert _edits(report) == [(shop.owner.id, "cash_addition_type", "personal", "company")]
+
+
+def test_a_line_s_new_details_are_in_the_history(client, shop, day):
+    from minty_db.models import ReportHistory
+
+    report, line = day
+
+    assert _edit_line(client, shop, report.id, line.id, remarks="Posters", supplier_id="con-0002",
+                      receipt=_file("new.png", JPEG)).status_code == 200
+
+    [row] = ReportHistory.objects.filter(report_id=report.id, field_changed=f"expense_{line.id}")
+    assert (row.user_id, row.action) == (shop.owner.id, "updated")
+    assert row.old_value == "Advertising: description Flyers, supplier ABC Supplies, receipt old.png"
+    assert row.new_value == "Advertising: description Posters, supplier Taxi Co, receipt new.png"
+
+
+def test_an_edit_that_changes_nothing_writes_no_history(client, shop, day):
+    report, _ = day
+    _set(report, cash_addition_type="company", discrepancy_reason="same")
+
+    assert _withdrawal(client, shop, report.id, "company").status_code == 200
+    assert _reason(client, shop, report.id, "same").status_code == 200
+
+    assert _edits(report) == []

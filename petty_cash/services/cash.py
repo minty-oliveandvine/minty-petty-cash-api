@@ -150,12 +150,12 @@ def _apply_count(report: Report, user, counts: dict, safe_box, reason: str, acti
 
 def _log_deposit(report, user, amount):
     log_history(report, user, action="updated", field_changed="bank_deposit", old_value="previous_deposit",
-                new_value=f"Bank Deposit: ${float(amount)}")
+                new_value=f"Bank Deposit: {_money(report, amount)}")
 
 
 def _log_count(report, user, total):
     log_history(report, user, action="added", field_changed="cash_count", old_value="previous_cash_count",
-                new_value=f"Cash Count: ${float(total)}")
+                new_value=f"Cash Count: {_money(report, total)}")
 
 
 def save_deposit(report: Report, user, amount, action_type: str) -> Report:

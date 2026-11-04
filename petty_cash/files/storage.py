@@ -73,8 +73,8 @@ def receipt_key(report, filename: str, description: str, amount, *, file_index=N
 
 
 def upload_receipt(data: bytes, mime: str, report, *, filename: str, description: str, amount,
-                   file_index=None, max_retries: int = 2) -> tuple[str, str]:
-    """Store a receipt's bytes (downsized) and return ``(key, stored mime type)``."""
+                   file_index=None, max_retries: int = 2) -> tuple[str, str, int]:
+    """Store a receipt's bytes (downsized) and return ``(key, stored mime type, stored size)``."""
     key = receipt_key(report, filename, description, amount, file_index=file_index)
     downsized, out_mime = downsize_bytes(data, mime or "")
     if out_mime == "image/jpeg" and not key.lower().endswith((".jpg", ".jpeg")):
@@ -87,7 +87,7 @@ def upload_receipt(data: bytes, mime: str, report, *, filename: str, description
     for attempt in range(max_retries + 1):
         try:
             client().upload_fileobj(io.BytesIO(downsized), bucket(), key)
-            return key, out_mime or mime
+            return key, out_mime or mime, len(downsized)
         except Exception as exc:  # noqa: BLE001 - any transport failure is retried, then raised
             last_error = exc
             if attempt < max_retries:

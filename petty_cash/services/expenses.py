@@ -34,6 +34,7 @@ from minty_db.models import (
 
 from petty_cash.files import storage
 from petty_cash.money import cents
+from petty_cash.services.cash import _money
 from petty_cash.services.reports import log_history, update_draft_progress
 from petty_cash.services.sales import cash_sales_from_detail
 
@@ -92,7 +93,8 @@ def recompute_totals(report: Report) -> Decimal:
     return total
 
 
-def _attachment_for(key: str, *, original_name: str, mime_type: str, file_size: int, uploaded_by) -> Attachment:
+def _attachment_for(key: str, *, original_name: str, mime_type: str, file_size: int | None,
+                    uploaded_by) -> Attachment:
     """The row for a stored key - reused if one exists (Flask's ``Attachment.for_key``)."""
     found = Attachment.objects.filter(file_path=key).first()
     if found is not None:
@@ -120,7 +122,7 @@ def add_expense(report: Report, user, *, amount: Decimal, remarks: str, supplier
         raise ExpenseRefused(NOT_A_DRAFT)
     amount = cents(amount)
     item = account.name
-    key, stored_mime = storage.upload_receipt(
+    key, stored_mime, stored_size = storage.upload_receipt(
         receipt, receipt_mime, report, filename=receipt_name, description=item or remarks or "EXPENSE",
         amount=amount,
     )
@@ -134,13 +136,13 @@ def add_expense(report: Report, user, *, amount: Decimal, remarks: str, supplier
                 account_id=account.id, contact_id=supplier.id,
             )
             attachment = _attachment_for(key, original_name=receipt_name, mime_type=stored_mime,
-                                         file_size=None, uploaded_by=user.id)
+                                         file_size=stored_size, uploaded_by=user.id)
             ReportExpenseAttachment.objects.create(report_expense_id=line.id, attachment_id=attachment.id,
                                                    sort_order=0, xero_attachment_id="")
             recompute_totals(locked)
             locked.save()
             log_history(locked, user, action="added", field_changed="expense", old_value="previous_expenses",
-                        new_value=f"Added expense: {item} (${float(amount)})")
+                        new_value=f"Added expense: {item} ({_money(locked, amount)})")
     except BaseException:
         storage.delete_files([key])
         raise
@@ -169,15 +171,15 @@ def _drop_orphans(row_id, old_ids, keep_keys=()) -> None:
 
 
 def replace_receipts(row: ReportExpense, uploaded, user) -> None:
-    """The line's receipts become ``uploaded`` (``(key, stored mime, original name)``, already in the
+    """The line's receipts become ``uploaded`` (``(key, stored mime, original name, stored size)``, already in the
     bucket); an old file no other link still uses leaves the bucket after the commit. Shared by the
     draft edit (``update_expense``) and the submitted-report edit (``report_edits``)."""
-    keys = [key for key, _, _ in uploaded]
+    keys = [key for key, *_ in uploaded]
     old_ids = list(ReportExpenseAttachment.objects.filter(report_expense_id=row.id)
                    .values_list("attachment_id", flat=True))
     ReportExpenseAttachment.objects.filter(report_expense_id=row.id).delete()
-    for order, (key, mime, name) in enumerate(uploaded):
-        attachment = _attachment_for(key, original_name=name, mime_type=mime, file_size=None, uploaded_by=user.id)
+    for order, (key, mime, name, size) in enumerate(uploaded):
+        attachment = _attachment_for(key, original_name=name, mime_type=mime, file_size=size, uploaded_by=user.id)
         ReportExpenseAttachment.objects.create(report_expense_id=row.id, attachment_id=attachment.id,
                                                sort_order=order, xero_attachment_id="")
     _drop_orphans(row.id, old_ids, keep_keys=keys)
@@ -216,14 +218,14 @@ def update_expense(report: Report, line: ReportExpense, user, *, amount: Decimal
     if receipt is None and not [i for i in held if i not in remove]:
         raise ExpenseRefused(KEEP_A_RECEIPT)
 
-    uploaded = []  # (key, stored mime, original name)
+    uploaded = []  # (key, stored mime, original name, stored size)
     try:
         if receipt is not None:
             data, mime, name = receipt
-            key, stored_mime = storage.upload_receipt(
+            key, stored_mime, stored_size = storage.upload_receipt(
                 data, mime, report, filename=name, description=item or remarks or "EXPENSE", amount=amount,
             )
-            uploaded.append((key, stored_mime, name))
+            uploaded.append((key, stored_mime, name, stored_size))
         with transaction.atomic():
             locked = Report.objects.select_for_update().get(id=report.id)
             if locked.status != ReportStatus.DRAFT:
@@ -245,9 +247,9 @@ def update_expense(report: Report, line: ReportExpense, user, *, amount: Decimal
             recompute_totals(locked)
             locked.save()
             log_history(locked, user, action="updated", field_changed="expense", old_value=f"expense_{row.id}",
-                        new_value=f"updated to amount: ${float(amount)}")
+                        new_value=f"updated to amount: {_money(locked, amount)}")
     except BaseException:
-        storage.delete_files([key for key, _, _ in uploaded])
+        storage.delete_files([key for key, *_ in uploaded])
         raise
     report.expense_total = locked.expense_total
     report.closing_balance = locked.closing_balance
