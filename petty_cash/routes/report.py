@@ -18,7 +18,7 @@
   ``{publishing_status, message}`` or ``{error}`` plus ``reconnect: true`` when Xero must be
   connected again. No usable answer is a 503/504 saying to check the report's status.
 - ``GET /reports/{id}/publishing-status``: how the publish went, from the report's columns; a
-  failed publish's ``reasons`` come from Flask (``publish_reasons``, as the history page's do).
+  failed publish's ``reasons`` are the history page's (``services/publish_reasons.py``).
 
 Another company's, an unknown or an unviewable report is 404. This router is mounted LAST
 (``petty_cash/api.py``): ``/reports/{id}`` would otherwise answer for ``/reports/opening``.
@@ -34,7 +34,7 @@ from minty_db.enums import ReportStatus
 from minty_db.models import Report
 from ninja import Router
 
-from core.accounts_api import PublishReasonsUnavailable, forward_publish, publish_reasons
+from core.accounts_api import forward_publish
 from core.exceptions import Refused
 from core.policy import Permission, can_delete_report, can_view_report, has_permission
 from petty_cash.days import hk
@@ -42,9 +42,9 @@ from petty_cash.money import cents, out
 from petty_cash.routes._input import form_and_files, json_body
 from petty_cash.routes.close import _iso, _sales_history, report_totals
 from petty_cash.routes.expenses import _company_line, lines_payload
-from petty_cash.routes.history import NO_REASONS
 from petty_cash.services.cash import expected_cash
 from petty_cash.services.expenses import expense_accounts, lines, suppliers
+from petty_cash.services.publish_reasons import publish_reasons
 from petty_cash.services.report_actions import (
     ReportActionRefused,
     delete_report,
@@ -259,10 +259,7 @@ def publishing_status(request, report_id: str):
     report = _report(request, report_id)
     reasons = []
     if report.publishing_status == "failed":
-        try:
-            reasons = publish_reasons(request.company.id, [report.id]).get(str(report.id), [])
-        except PublishReasonsUnavailable:
-            raise Refused(NO_REASONS, 503) from None
+        reasons = publish_reasons(request.company.id, [report.id]).get(str(report.id), [])
     label, tone = report_status(report)
     return {
         "report_id": str(report.id),

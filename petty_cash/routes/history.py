@@ -2,9 +2,8 @@
 
 ``GET /reports?status=&start_date=&end_date=&page=&per_page=``: one page of the company's reports,
 newest day first, each with its Status pill, its figures, who submitted it, a failed publish's
-reasons (from Flask - the owner's choice, 2026-10-16: this service holds no Xero code) and what this
-person may do to it. A bad filter is refused (422) with a sentence; failed rows whose reasons Flask
-can't give make the page a 503 rather than show them with none.
+reasons (``services/publish_reasons.py``, worked out here since Phase 3 of the Flask retirement,
+2026-11-05) and what this person may do to it. A bad filter is refused (422) with a sentence.
 
 ``GET /reports/export.csv?start_date=&end_date=``: the movements CSV of the submitted reports in the
 range (``services/report_csv.py``, Flask's ``report_csv.py`` byte for byte) as a file. Both dates,
@@ -21,7 +20,6 @@ from django.http import HttpResponse
 from minty_db.enums import ReportStatus
 from ninja import Router
 
-from core.accounts_api import PublishReasonsUnavailable, publish_reasons
 from core.exceptions import Refused
 from core.policy import Permission, can_delete_report, has_permission
 from petty_cash.days import hk
@@ -29,6 +27,7 @@ from petty_cash.money import out
 from petty_cash.routes.close import _iso
 from petty_cash.services import report_csv
 from petty_cash.services.history import STATUS_FILTERS, report_history
+from petty_cash.services.publish_reasons import publish_reasons
 from petty_cash.services.report_actions import was_published
 from petty_cash.services.report_page import report_status
 from petty_cash.services.reports import currency_code, last_submitted
@@ -36,7 +35,6 @@ from petty_cash.services.reports import currency_code, last_submitted
 router = Router()
 
 PER_PAGE = (10, 25, 50, 100)
-NO_REASONS = "I couldn't load why some reports didn't publish. Try again in a moment."
 #: The export's sentence for each refused range (``report_csv.parse_range``'s reasons) - Flask's.
 EXPORT_REFUSALS = {
     "missing": "Choose both dates to export the reports between them.",
@@ -81,12 +79,7 @@ def history(request):
     entity_id, person = request.company.id, request.auth_user
     data = report_history(entity_id, **filters)
     failed = [r.id for r in data["reports"] if r.publishing_status == "failed"]
-    reasons = {}
-    if failed:
-        try:
-            reasons = publish_reasons(entity_id, failed)
-        except PublishReasonsUnavailable:
-            raise Refused(NO_REASONS, 503) from None
+    reasons = publish_reasons(entity_id, failed) if failed else {}
     may_edit = has_permission(person, Permission.REPORT_EDIT_OWN, entity_id)
     latest_id = data["latest_report_id"]
     last = last_submitted(entity_id)  # a draft dated before it is stale: deletable, never latest

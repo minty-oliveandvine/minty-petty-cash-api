@@ -3,11 +3,9 @@
 - ``GET /home``: everything the page computes (``petty_cash/services/dashboard.py``) plus what this
   person may do there.
 - ``POST /deposit-correction`` ``{kind, date, amount}``: the "Before You Start" correction of the
-  previous day's bank deposit. It can reverse and re-post the deposit in Xero, so Flask does it
-  (``core/accounts_api.py``, the owner's choice of 2026-10-15): this route asks
-  ``REPORT_EDIT_ENTITY`` itself, then hands the body to Flask's internal route and Flask's answer -
-  the Petty Cash API's own JSON, refusals included - back unchanged. Flask checks the person and the
-  body again.
+  previous day's bank deposit, which can reverse and re-post the deposit in Xero
+  (``services/deposit_correction.py``; done here since Phase 3 of the Flask retirement, 2026-11-05 -
+  Flask did it from 2026-10-15 until then). ``REPORT_EDIT_ENTITY`` (403), then the body (422).
 """
 
 from __future__ import annotations
@@ -15,13 +13,13 @@ from __future__ import annotations
 from django.http import JsonResponse
 from ninja import Router
 
-from core.accounts_api import forward_deposit_correction
 from core.exceptions import Refused
 from core.policy import Permission, has_permission, is_superuser_readonly
 from petty_cash.days import iso
 from petty_cash.money import out
 from petty_cash.routes._input import json_body
 from petty_cash.services.dashboard import dashboard_state, member_count
+from petty_cash.services.deposit_correction import correct_deposit, valid_correction
 
 router = Router()
 
@@ -91,5 +89,8 @@ def deposit_correction(request):
     entity_id = request.company.id
     if not has_permission(request.auth_user, Permission.REPORT_EDIT_ENTITY, entity_id):
         raise Refused(NOT_ALLOWED, 403)
-    answer, status = forward_deposit_correction(entity_id, request.auth_user.id, json_body(request))
+    correction, problem = valid_correction(json_body(request))
+    if problem:
+        raise Refused(problem, 422)
+    answer, status = correct_deposit(entity_id, correction)
     return JsonResponse(answer, status=status)

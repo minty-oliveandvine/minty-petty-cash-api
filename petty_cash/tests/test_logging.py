@@ -108,7 +108,7 @@ def test_calls_to_flask_carry_the_trace_and_xero_calls_do_not(monkeypatch, setti
     logctx.start_trace("a1b2c3d4")
     try:
         xero_tokens.xero_token(shop.entity.id)
-        accounts_api.publish_reasons(shop.entity.id, [])
+        accounts_api.forward_xero_settings(shop.entity.id, shop.owner.id, "read", None)
     finally:
         logctx.reset()
     assert [h.get("X-Request-ID") for _, h in sent] == ["a1b2c3d4", "a1b2c3d4"]

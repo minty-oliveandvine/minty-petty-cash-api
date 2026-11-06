@@ -1,25 +1,22 @@
 """Report history (``petty_cash/routes/history.py``) - Flask's ``tests/test_petty_cash_api_history.py``
-and ``tests/test_report_history_state.py`` expectations, restated. A failed report's reasons come
-from Flask's internal route (faked here; Flask's side is Minty's
-``tests/test_petty_cash_internal_publish_reasons.py``)."""
+and ``tests/test_report_history_state.py`` expectations, restated. A failed report's reasons are
+worked out here (``services/publish_reasons.py``, its own tests in ``test_publish_reasons.py``);
+Flask is still faked, to show it is never asked."""
 
 from __future__ import annotations
 
 import json
+import uuid
 from datetime import timedelta
 
-import jwt
 import pytest
-import requests
-from django.conf import settings
 from minty_db.enums import EntityRole
-from minty_db.models import UserEntity
+from minty_db.models import ReportHistory, UserEntity
 
 from petty_cash.tests.conftest import headers, make_entity, make_report, make_user, url
 from petty_cash.tests.test_close import D3
 
 pytestmark = pytest.mark.django_db
-FLASK = "http://flask.invalid/api/internal/xero/publish-reasons"
 REASON = {"text": "No account code for Cleaning", "resolved": False}
 
 
@@ -58,8 +55,13 @@ def _older(shop, days_back=1, **fields):
     values = {"opening_balance": 0, "closing_balance": 10, "completed_sections": ["opening"],
               "current_section": "submitted"}
     values.update(fields)
-    return make_report(shop.entity, D3 - timedelta(days=days_back), status=values.pop("status", "submitted"),
-                       created_by=shop.owner.id, **values)
+    report = make_report(shop.entity, D3 - timedelta(days=days_back), status=values.pop("status", "submitted"),
+                         created_by=shop.owner.id, **values)
+    if values.get("publishing_status") == "failed":
+        # The publish's stored reason: nothing it can re-check, so it reads unresolved (REASON).
+        ReportHistory.objects.create(id=uuid.uuid4(), report_id=report.id, action="publish_failed",
+                                     new_value=json.dumps([{"text": REASON["text"]}]))
+    return report
 
 
 def _get(client, shop, user=None, **query):
@@ -92,35 +94,14 @@ def test_one_page_newest_first_with_what_may_be_done(client, shop, flask):
         "can_publish": True, "currency_code": "HKD"}
 
 
-def test_reasons_are_asked_of_flask_for_the_failed_rows_on_the_page_only(client, shop, flask):
+def test_reasons_are_worked_out_here_never_asked_of_flask(client, shop, flask):
     failed = _older(shop, days_back=1, publishing_status="failed")
-    _older(shop, days_back=0)
+    latest = _older(shop, days_back=0)
 
-    _get(client, shop)
+    reports = _get(client, shop).json()["reports"]
 
-    sent, = flask.sent
-    assert sent["url"] == FLASK and sent["json"] == {"report_ids": [str(failed.id)]}
-    assertion = sent["headers"]["Authorization"].removeprefix("Bearer ")
-    claims = jwt.decode(assertion, settings.SECRET_KEY, algorithms=["HS256"])
-    assert (claims["scope"], claims["entity_id"]) == ("petty-cash-publish-reasons", str(shop.entity.id))
-
-
-def test_a_page_with_no_failed_report_never_asks_flask(client, shop, flask):
-    _older(shop, days_back=0)
-
-    assert _get(client, shop).status_code == 200 and flask.sent == []
-
-
-@pytest.mark.parametrize("failure", [requests.ConnectionError("down"), _Response(500, {"error": "x"}),
-                                     _Response(200, {"nope": 1})])
-def test_reasons_flask_cannot_give_make_the_page_fail_rather_than_show_none(client, shop, flask, failure):
-    _older(shop, days_back=0, publishing_status="failed")
-    flask.failure = failure
-
-    resp = _get(client, shop)
-
-    assert resp.status_code == 503
-    assert resp.json() == {"error": "I couldn't load why some reports didn't publish. Try again in a moment."}
+    assert {r["id"]: r["publish_reasons"] for r in reports} == {str(latest.id): [], str(failed.id): [REASON]}
+    assert flask.sent == []
 
 
 def test_filters_and_pages(client, shop, flask):

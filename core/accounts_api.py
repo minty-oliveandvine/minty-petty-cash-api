@@ -3,11 +3,6 @@ assertion signed with the shared ``SECRET_KEY`` whose claims - never the body - 
 (and the person, where the call acts for one), with a ``scope`` that only one Flask route accepts.
 
 - ``core/xero_tokens.py``: ``POST /api/internal/xero/token``.
-- ``forward_deposit_correction``: ``POST /api/internal/xero/deposit-correction`` - the dashboard's
-  deposit correction, which can reverse and re-post the deposit in Xero, done by Flask (the owner's
-  choice, 2026-10-15: this service holds no Xero code or credentials).
-- ``publish_reasons``: ``POST /api/internal/xero/publish-reasons`` - why the history page's failed
-  reports didn't publish (the owner's choice, 2026-10-16).
 - ``forward_publish``: ``POST /api/internal/xero/publish`` - start a report's Xero publish (the
   same choice: the publish asks Xero and starts Flask's background worker).
 - ``forward_xero_settings``: ``POST /api/internal/xero/petty-cash-settings`` - Petty Cash
@@ -24,14 +19,6 @@ from minty_shared import tokens
 from minty_shared.tokens import assertion_headers
 
 logger = logging.getLogger("petty-cash-api")
-
-DEPOSIT_CORRECTION_SCOPE = "petty-cash-deposit-correction"
-#: Flask's gunicorn gives a request 120 s (its Procfile); waiting a little longer means this service
-#: never gives up on a correction Flask is still finishing in Xero.
-DEPOSIT_CORRECTION_TIMEOUT = (5, 125)
-#: Said whenever Flask gave no usable answer: the correction may or may not have reached Xero.
-UNCONFIRMED = "I couldn't confirm the deposit correction. Check the day on the dashboard before trying again."
-
 
 def service_assertion(scope: str, entity_id, **claims) -> str:
     """The 60-second assertion every backend builds (``minty_shared.tokens``), signed with the
@@ -68,12 +55,6 @@ def _forward(what: str, path: str, scope: str, timeout, unconfirmed: str, entity
     return answer, resp.status_code
 
 
-def forward_deposit_correction(entity_id, user_id, body) -> tuple[dict, int]:
-    """The dashboard's deposit correction ``body``, done by Flask (``_forward``)."""
-    return _forward("Deposit correction", "/api/internal/xero/deposit-correction", DEPOSIT_CORRECTION_SCOPE,
-                    DEPOSIT_CORRECTION_TIMEOUT, UNCONFIRMED, entity_id, user_id, body)
-
-
 PUBLISH_SCOPE = "petty-cash-publish"
 #: The start answers once the background worker is running (202), but first asks Xero up to three
 #: times (the token, a status re-sync, the system-account check). Cut off sooner and the person is
@@ -106,35 +87,3 @@ def forward_xero_settings(entity_id, user_id, action: str, body) -> tuple[dict, 
     unconfirmed = XERO_SETTINGS_UNREACHABLE if action == "read" else XERO_SETTINGS_UNCONFIRMED
     return _forward(f"Xero settings ({action})", "/api/internal/xero/petty-cash-settings", XERO_SETTINGS_SCOPE,
                     XERO_SETTINGS_TIMEOUT, unconfirmed, entity_id, user_id, {"action": action, "body": body})
-
-
-PUBLISH_REASONS_SCOPE = "petty-cash-publish-reasons"
-PUBLISH_REASONS_TIMEOUT = (5, 60)
-
-
-class PublishReasonsUnavailable(Exception):
-    """Flask could not say why the failed reports didn't publish."""
-
-
-def publish_reasons(entity_id, report_ids) -> dict[str, list[dict]]:
-    """``{report id: [{text, resolved}]}`` from Flask's ``POST /api/internal/xero/publish-reasons``
-    (the history page's own reasons; working out "resolved" may ask Xero). Raises
-    ``PublishReasonsUnavailable`` rather than answer with no reasons - an empty list would read as
-    "nothing to fix"."""
-    assertion = service_assertion(PUBLISH_REASONS_SCOPE, entity_id)
-    url = f"{settings.ACCOUNTS_API_URL}/api/internal/xero/publish-reasons"
-    try:
-        resp = requests.post(url, json={"report_ids": [str(i) for i in report_ids]},
-                             headers=assertion_headers(assertion), timeout=PUBLISH_REASONS_TIMEOUT)
-        body = resp.json() if resp.status_code == 200 else None
-    except (requests.RequestException, ValueError) as exc:
-        logger.error("Publish reasons: no answer from Flask for company %s: %s", entity_id, exc)
-        raise PublishReasonsUnavailable from None
-    reasons = body.get("reasons") if isinstance(body, dict) else None
-    if not isinstance(reasons, dict):
-        logger.error("Publish reasons: Flask answered %s for company %s: %s", resp.status_code, entity_id,
-                     (resp.text or "")[:200])
-        raise PublishReasonsUnavailable
-    return reasons
-
-

@@ -1,13 +1,15 @@
 """Publishing to Xero (``petty_cash/routes/report.py``): ``POST /reports/{id}/publish`` is done by
 Flask's internal route (``core/accounts_api.py::forward_publish``, the owner's choice: this service
 holds no Xero code) after this service checks the report and ``REPORT_PUBLISH``;
-``GET /reports/{id}/publishing-status`` is read here, a failed publish's reasons asked of Flask.
+``GET /reports/{id}/publishing-status`` is read here, a failed publish's reasons worked out here
+(``services/publish_reasons.py``, its own tests in ``test_publish_reasons.py``).
 Flask's ``tests/test_petty_cash_api_report.py`` (publishing section) and
 ``tests/test_report_publish_state.py`` expectations, restated; HTTP to Flask is faked (Flask's side
 is Minty's ``tests/test_petty_cash_internal_publish.py``)."""
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import UTC, datetime
 
@@ -16,10 +18,9 @@ import pytest
 import requests
 from django.conf import settings
 from minty_db.enums import EntityRole
-from minty_db.models import UserEntity
+from minty_db.models import ReportHistory, UserEntity
 
 from core.accounts_api import PUBLISH_UNCONFIRMED
-from petty_cash.routes.history import NO_REASONS
 from petty_cash.tests.conftest import headers, make_entity, make_report, make_user, url
 from petty_cash.tests.test_close import D3
 from petty_cash.tests.test_deposit_correction import _Response
@@ -27,7 +28,6 @@ from petty_cash.tests.test_report import _older, _set
 
 pytestmark = pytest.mark.django_db
 PUBLISH = "http://flask.invalid/api/internal/xero/publish"
-REASONS = "http://flask.invalid/api/internal/xero/publish-reasons"
 STARTED = {"publishing_status": "publishing", "message": "Publishing to Xero. This can take a few minutes."}
 REASON = {"text": "No account code for Fees", "resolved": True}
 
@@ -41,8 +41,6 @@ class FakeFlask:
         self.sent.append({"url": url, "json": json, "headers": headers or {}, "timeout": timeout})
         if isinstance(self.answer, Exception):
             raise self.answer
-        if url == REASONS and self.answer is None:
-            return _Response(200, {"reasons": {i: [{**REASON, "resolvable": True}] for i in json["report_ids"]}})
         return self.answer
 
 
@@ -161,27 +159,19 @@ def test_a_publishing_report_says_so_and_flask_is_never_asked(client, shop, flas
     assert flask.sent == []
 
 
-def test_a_failed_publish_brings_its_reasons_from_flask(client, shop, flask):
+def test_a_failed_publish_brings_its_reasons(client, shop, flask):
     report = _older(shop)
     _set(report, publishing_status="failed")
-    flask.answer = None  # the reasons route answers
+    # The publish's stored reason: a line that has since been removed, so it reads resolved.
+    ReportHistory.objects.create(id=uuid.uuid4(), report_id=report.id, action="publish_failed",
+                                 new_value=json.dumps([{"text": REASON["text"], "scope": "expense",
+                                                        "expense_id": str(uuid.uuid4())}]))
 
     body = _status(client, shop, report.id).json()
 
     assert (body["publishing_status"], body["status_label"], body["status_tone"]) == ("failed", "Publish failed", "danger")
     assert body["reasons"] == [REASON]
-    sent, = flask.sent
-    assert sent["url"] == REASONS and sent["json"] == {"report_ids": [str(report.id)]}
-
-
-def test_failed_reasons_flask_cannot_give_make_a_503(client, shop, flask):
-    report = _older(shop)
-    _set(report, publishing_status="failed")
-    flask.answer = requests.ConnectionError("down")
-
-    resp = _status(client, shop, report.id)
-
-    assert resp.status_code == 503 and resp.json() == {"error": NO_REASONS}
+    assert flask.sent == []  # worked out here, never asked of Flask
 
 
 def test_a_report_in_xero_reads_published(client, shop, flask):
