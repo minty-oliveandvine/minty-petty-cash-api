@@ -3,8 +3,6 @@ assertion signed with the shared ``SECRET_KEY`` whose claims - never the body - 
 (and the person, where the call acts for one), with a ``scope`` that only one Flask route accepts.
 
 - ``core/xero_tokens.py``: ``POST /api/internal/xero/token``.
-- ``forward_publish``: ``POST /api/internal/xero/publish`` - start a report's Xero publish (the
-  same choice: the publish asks Xero and starts Flask's background worker).
 - ``forward_xero_settings``: ``POST /api/internal/xero/petty-cash-settings`` - Petty Cash
   Settings' Xero cards (the same choice: each checks the connection live and refreshes from Xero).
 """
@@ -53,22 +51,6 @@ def _forward(what: str, path: str, scope: str, timeout, unconfirmed: str, entity
         logger.error("%s: Flask refused this service's assertion for company %s", what, entity_id)
         return {"error": "Something went wrong on our side. Please try again."}, 500
     return answer, resp.status_code
-
-
-PUBLISH_SCOPE = "petty-cash-publish"
-#: The start answers once the background worker is running (202), but first asks Xero up to three
-#: times (the token, a status re-sync, the system-account check). Cut off sooner and the person is
-#: told to check the status - the publish may have started.
-PUBLISH_TIMEOUT = (5, 60)
-#: Said whenever Flask gave no usable answer: the publish may or may not have started.
-PUBLISH_UNCONFIRMED = "I couldn't confirm the publish started. Check the report's status before trying again."
-
-
-def forward_publish(entity_id, user_id, report_id) -> tuple[dict, int]:
-    """Start ``report_id``'s Xero publish for this person, done by Flask (``_forward``): 202
-    ``{publishing_status, message}`` or the refusal ``{error[, reconnect]}``."""
-    return _forward("Publish", "/api/internal/xero/publish", PUBLISH_SCOPE, PUBLISH_TIMEOUT, PUBLISH_UNCONFIRMED,
-                    entity_id, user_id, {"report_id": str(report_id)})
 
 
 XERO_SETTINGS_SCOPE = "petty-cash-xero-settings"

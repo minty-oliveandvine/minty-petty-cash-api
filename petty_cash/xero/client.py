@@ -38,6 +38,12 @@ def post(path: str, access_token: str, xero_org_id, payload: dict) -> requests.R
                          data=json.dumps(payload), timeout=TIMEOUT)
 
 
+def put(path: str, access_token: str, xero_org_id, payload: dict) -> requests.Response:
+    """``PUT {XERO_API_BASE_URL}/{path}`` with a JSON body (Xero's create for invoices)."""
+    return requests.put(f"{settings.XERO_API_BASE_URL}/{path}", headers=headers(access_token, xero_org_id),
+                        data=json.dumps(payload), timeout=TIMEOUT)
+
+
 def parse_id(response_text: str | None, collection: str, id_field: str) -> str:
     """The id of the first object in a Xero success body (``{"Invoices": [{"InvoiceID": ...}]}``),
     or "". Never raises: a publish Xero accepted is not failed over an unreadable id (it only means

@@ -65,14 +65,14 @@ def xero(monkeypatch) -> FakeXero:
     return fake
 
 
-def _failed(shop, items, *, days_back=0, action=pr.PUBLISH_FAILED, at=None):
+def _failed(shop, items, *, days_back=0, action="publish_failed", at=None):
     report = make_report(shop.entity, D3 - timedelta(days=days_back), created_by=shop.owner.id,
                          publishing_status="failed")
     _history(report, items, action=action, at=at)
     return report
 
 
-def _history(report, items, *, action=pr.PUBLISH_FAILED, at=None):
+def _history(report, items, *, action="publish_failed", at=None):
     row = ReportHistory.objects.create(id=uuid.uuid4(), report_id=report.id, action=action,
                                        new_value=items if isinstance(items, str) or items is None else json.dumps(items))
     if at is not None:

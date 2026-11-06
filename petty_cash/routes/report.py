@@ -12,11 +12,10 @@
   ``PATCH /reports/{id}/expense-lines/{line id}``: a submitted report's details that move no
   balance (``services/report_edits.py``). Any submitted report may be edited this way, not only the
   latest; each answers the Daily Report again.
-- ``POST /reports/{id}/publish``: start the Xero publish. The report and ``REPORT_PUBLISH`` are
-  checked here (404/403, no call), then Flask does it (``core/accounts_api.py::forward_publish``,
-  the owner's choice: this service holds no Xero code) and its answer comes back unchanged - 202
-  ``{publishing_status, message}`` or ``{error}`` plus ``reconnect: true`` when Xero must be
-  connected again. No usable answer is a 503/504 saying to check the report's status.
+- ``POST /reports/{id}/publish``: start the Xero publish (``services/publish.py``; done here since
+  Phase 3 of the Flask retirement, 2026-11-05). The report (404) and ``REPORT_PUBLISH`` (403), then
+  202 ``{publishing_status, message}`` or ``{error}`` plus ``reconnect: true`` when Xero must be
+  connected again.
 - ``GET /reports/{id}/publishing-status``: how the publish went, from the report's columns; a
   failed publish's ``reasons`` are the history page's (``services/publish_reasons.py``).
 
@@ -34,7 +33,6 @@ from minty_db.enums import ReportStatus
 from minty_db.models import Report
 from ninja import Router
 
-from core.accounts_api import forward_publish
 from core.exceptions import Refused
 from core.policy import Permission, can_delete_report, can_view_report, has_permission
 from petty_cash.days import hk
@@ -44,6 +42,7 @@ from petty_cash.routes.close import _iso, _sales_history, report_totals
 from petty_cash.routes.expenses import _company_line, lines_payload
 from petty_cash.services.cash import expected_cash
 from petty_cash.services.expenses import expense_accounts, lines, suppliers
+from petty_cash.services.publish import PublishRefused, start_publish
 from petty_cash.services.publish_reasons import publish_reasons
 from petty_cash.services.report_actions import (
     ReportActionRefused,
@@ -250,8 +249,14 @@ def publish(request, report_id: str):
     report = _report(request, report_id)
     if not has_permission(request.auth_user, Permission.REPORT_PUBLISH, request.company.id):
         raise Refused("You don't have permission to publish reports for this company.", 403)
-    answer, status = forward_publish(request.company.id, request.auth_user.id, report.id)
-    return JsonResponse(answer, status=status)
+    try:
+        answer = start_publish(request.company.id, report, request.auth_user)
+    except PublishRefused as refused:
+        body = {"error": refused.message}
+        if refused.reconnect:
+            body["reconnect"] = True
+        return JsonResponse(body, status=refused.status)
+    return JsonResponse(answer, status=202)
 
 
 @router.get("/reports/{report_id}/publishing-status")

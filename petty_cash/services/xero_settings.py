@@ -65,6 +65,26 @@ def account_for_role(entity_id, role: str) -> dict | None:
     return found
 
 
+#: A contact role -> its ``entity_pettycash_settings`` column (Flask's
+#: ``xero_bridge._CONTACT_ROLE_TO_PETTYCASH_SETTINGS_COLUMN``).
+_CONTACT_ROLE_COLUMN = {
+    "cashsale_contact": "cash_sale_contact_id",
+    "director_contact": "director_contact_id",
+    "discrepancy_contact": "discrepancy_contact_id",
+}
+
+
+def contact_for_role(entity_id, role: str) -> XeroContactSync | None:
+    """The synced contact mapped to a Petty Cash contact role, or None (Flask's
+    ``get_entity_contact_settings``)."""
+    column = _CONTACT_ROLE_COLUMN.get(role)
+    if column is None:
+        raise ValueError(f"unknown contact role {role!r}")
+    row = _settings(entity_id)
+    contact_id = getattr(row, column, None) if row is not None else None
+    return XeroContactSync.objects.filter(id=contact_id).first() if contact_id else None
+
+
 def missing_slots(entity_id) -> list[str]:
     """Labels of the slots not mapped yet, in the dashboard's order."""
     row = _settings(entity_id)

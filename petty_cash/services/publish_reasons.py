@@ -23,7 +23,6 @@ A check that fails never breaks the list. The reason then reads unresolved.
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 
@@ -31,7 +30,6 @@ import requests
 from django.conf import settings
 from minty_db.models import (
     AccountInfo,
-    EntityPettycashSettings,
     Report,
     ReportExpense,
     ReportHistory,
@@ -39,14 +37,11 @@ from minty_db.models import (
 )
 
 from core.xero_tokens import XeroTokenUnavailable, xero_token
-from petty_cash.services.xero_settings import account_for_role
+from petty_cash.services.xero_settings import account_for_role, contact_for_role
+from petty_cash.xero.errors import PublishFailureReason
 
 logger = logging.getLogger("petty-cash-api")
 
-#: The ``report_history.action`` of a failed publish.
-PUBLISH_FAILED = "publish_failed"
-#: Legacy rows carried the reason in the action itself.
-LEGACY_PREFIX = "publish_failed:"
 #: The most report ids one answer works out (the history page shows 10 a page).
 MAX_REPORTS = 100
 #: A live contact look-up is a badge, not a publish: it must not hold the page.
@@ -54,13 +49,6 @@ CONTACT_TIMEOUT = (5, 15)
 
 _EXPENSE_TEXT_RE = re.compile(r"^Expense '(.+?)'")
 
-#: A contact role in a reason's deps -> its ``entity_pettycash_settings`` column (Flask's
-#: ``xero_bridge._CONTACT_ROLE_TO_PETTYCASH_SETTINGS_COLUMN``).
-_CONTACT_ROLE_COLUMN = {
-    "cashsale_contact": "cash_sale_contact_id",
-    "director_contact": "director_contact_id",
-    "discrepancy_contact": "discrepancy_contact_id",
-}
 
 
 # ---- the stored items ------------------------------------------------------------------------
@@ -68,39 +56,7 @@ _CONTACT_ROLE_COLUMN = {
 
 def reason_items(action: str | None, new_value: str | None) -> list[dict]:
     """The items one ``report_history`` row holds (``reason_items_from_history``)."""
-    if (action or "").strip() != PUBLISH_FAILED:
-        if action and action.startswith(LEGACY_PREFIX):
-            legacy = action[len(LEGACY_PREFIX):].strip()
-            return [{"text": legacy}] if legacy else []
-        return []
-    if not new_value:
-        return []
-    try:
-        parsed = json.loads(new_value)
-    except (ValueError, TypeError):
-        stripped = new_value.strip()
-        return [{"text": stripped}] if stripped else []
-    if not isinstance(parsed, list):
-        stripped = str(parsed).strip()
-        return [{"text": stripped}] if stripped else []
-    items: list[dict] = []
-    for element in parsed:
-        if isinstance(element, dict):
-            text = str(element.get("text", "")).strip()
-            if text:
-                items.append({
-                    "text": text,
-                    "scope": element.get("scope"),
-                    "expense_id": element.get("expense_id"),
-                    "deps": element.get("deps") or [],
-                    "failed_contact_id": element.get("failed_contact_id"),
-                    "module": element.get("module"),
-                })
-        else:
-            stripped = str(element).strip()
-            if stripped:
-                items.append({"text": stripped})
-    return items
+    return PublishFailureReason.reason_items_from_history(action, new_value)
 
 
 def latest_reason_items(report: Report) -> list[dict]:
@@ -173,13 +129,11 @@ def _role_account_valid(entity_id, role: str) -> bool:
 
 
 def _role_contact_valid(entity_id, role: str, cache: dict) -> bool:
-    column = _CONTACT_ROLE_COLUMN.get(role)
-    if column is None:
+    try:
+        contact = contact_for_role(entity_id, role)
+    except ValueError:
         logger.warning("Publish reasons: unknown contact role %s", role)
         return False
-    row = EntityPettycashSettings.objects.filter(entity_id=entity_id).first()
-    contact_id = getattr(row, column, None) if row is not None else None
-    contact = XeroContactSync.objects.filter(id=contact_id).first() if contact_id else None
     if contact is None or not contact.xero_contact_id:
         return False
     return _contact_active(entity_id, contact.xero_contact_id, cache)

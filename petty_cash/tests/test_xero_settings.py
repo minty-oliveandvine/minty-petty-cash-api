@@ -16,7 +16,6 @@ from minty_db.enums import EntityRole
 from core.accounts_api import XERO_SETTINGS_UNCONFIRMED, XERO_SETTINGS_UNREACHABLE
 from petty_cash.tests.conftest import headers, url
 from petty_cash.tests.test_deposit_correction import _Response
-from petty_cash.tests.test_publish import FakeFlask
 from petty_cash.tests.test_settings import call, member
 
 pytestmark = pytest.mark.django_db
@@ -37,6 +36,18 @@ ACTIONS = [
     ("put", "/settings/xero/account-codes", "account-codes", {"codes": ["400"]}),
 ]
 SAVES = ACTIONS[1:]
+
+
+class FakeFlask:
+    def __init__(self):
+        self.sent = []
+        self.answer = None
+
+    def post(self, url, json=None, headers=None, timeout=None, **_):
+        self.sent.append({"url": url, "json": json, "headers": headers or {}, "timeout": timeout})
+        if isinstance(self.answer, Exception):
+            raise self.answer
+        return self.answer
 
 
 @pytest.fixture
