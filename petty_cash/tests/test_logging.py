@@ -91,7 +91,8 @@ def test_nothing_outlives_the_request(client, shop):
 def test_calls_to_flask_carry_the_trace_and_xero_calls_do_not(monkeypatch, settings, shop):
     import requests
 
-    from core import accounts_api, xero_tokens
+    from core import xero_tokens
+    from petty_cash.services import xero_cards
 
     settings.ACCOUNTS_API_URL = "http://flask.test"
     sent = []
@@ -108,7 +109,7 @@ def test_calls_to_flask_carry_the_trace_and_xero_calls_do_not(monkeypatch, setti
     logctx.start_trace("a1b2c3d4")
     try:
         xero_tokens.xero_token(shop.entity.id)
-        accounts_api.forward_xero_settings(shop.entity.id, shop.owner.id, "read", None)
+        xero_cards.refresh_from_xero(shop.entity)
     finally:
         logctx.reset()
     assert [h.get("X-Request-ID") for _, h in sent] == ["a1b2c3d4", "a1b2c3d4"]

@@ -1,9 +1,14 @@
-"""Petty Cash Settings' Xero cards (``petty_cash/routes/settings.py``): ``GET /settings/xero``,
-``PUT /settings/xero/mapping`` and ``PUT /settings/xero/account-codes`` are done by Flask's internal
-route (``core/accounts_api.py::forward_xero_settings``, the owner's choice: this service holds no
-Xero code) after this service checks the person's rights. Flask's
-``tests/test_petty_cash_api_xero_settings.py`` expectations, restated with Flask faked (Flask's side
-is Minty's ``tests/test_petty_cash_internal_xero_settings.py``)."""
+"""Petty Cash Settings' Xero cards (``petty_cash/routes/settings.py``, ``services/xero_cards.py``),
+done here since Phase 3 of the Flask retirement.
+
+Restated against real rows:
+- Flask's ``tests/test_petty_cash_api_xero_settings.py`` and ``test_xero_mapping_state.py``;
+- the live check (accounts-api's token, Xero's /connections);
+- the refresh through accounts-api's one sync.
+
+The token service is stubbed at ``xero_token``; ``requests`` answers for /connections and for
+accounts-api's sync.
+"""
 
 from __future__ import annotations
 
@@ -12,168 +17,231 @@ import pytest
 import requests
 from django.conf import settings
 from minty_db.enums import EntityRole
+from minty_db.models import (
+    AccountInfo,
+    Entity,
+    EntityAccountXero,
+    EntityPettycashSettings,
+    XeroContactSync,
+)
 
-from core.accounts_api import XERO_SETTINGS_UNCONFIRMED, XERO_SETTINGS_UNREACHABLE
-from petty_cash.tests.conftest import headers, url
-from petty_cash.tests.test_deposit_correction import _Response
+from core.xero_tokens import XeroToken, XeroTokenUnavailable
+from petty_cash.services import xero_cards
 from petty_cash.tests.test_settings import call, member
 
 pytestmark = pytest.mark.django_db
-SETTINGS = "http://flask.invalid/api/internal/xero/petty-cash-settings"
+ORG = "org-1"
 MAPPING = {"main_bank": "acc-pc", "deposit_bank": "acc-dep", "cashsale_account": "acc-sales",
            "cashsale_contact": "con-1", "owners_account": "acc-owner", "owners_contact": "con-1",
            "discrepancy_account": "acc-adv", "discrepancy_contact": "con-1"}
-READ = {"live": True, "organisation": "Corner Shop Ltd", "mapping": [], "mapping_saved": False,
-        "account_codes": [{"code": "400", "name": "Advertising", "selected": True}],
-        "permissions": {"edit_mapping": True, "edit_account_codes": True}}
-NOT_LIVE = {"live": False, "organisation": None, "mapping": None, "mapping_saved": False, "account_codes": None,
-            "permissions": {"edit_mapping": True, "edit_account_codes": True}}
 NO_RIGHT = "You don't have permission to change these settings. Ask an Accountant or an Admin."
-#: (method, path, action, body sent)
-ACTIONS = [
-    ("get", "/settings/xero", "read", None),
-    ("put", "/settings/xero/mapping", "mapping", MAPPING),
-    ("put", "/settings/xero/account-codes", "account-codes", {"codes": ["400"]}),
-]
-SAVES = ACTIONS[1:]
 
 
-class FakeFlask:
+class _Resp:
+    def __init__(self, status, body):
+        self.status_code, self._body, self.text = status, body, str(body)
+
+    def json(self):
+        return self._body
+
+
+class Xero:
+    """Xero's /connections and accounts-api's sync; ``listed`` = the organisation is connected."""
+
     def __init__(self):
-        self.sent = []
-        self.answer = None
+        self.listed = True
+        self.sync_answer = _Resp(200, {"accounts": None, "contacts": None})
+        self.syncs: list[dict] = []
+        self.token_problem: XeroTokenUnavailable | None = None
 
-    def post(self, url, json=None, headers=None, timeout=None, **_):
-        self.sent.append({"url": url, "json": json, "headers": headers or {}, "timeout": timeout})
-        if isinstance(self.answer, Exception):
-            raise self.answer
-        return self.answer
+    def get(self, url, headers=None, timeout=None, **_):
+        assert url == "https://api.xero.com/connections"
+        return _Resp(200, [{"tenantId": ORG}] if self.listed else [])
+
+    def post(self, url, headers=None, timeout=None, **_):
+        assert url == f"{settings.ACCOUNTS_API_URL}/api/internal/xero/sync"
+        self.syncs.append(headers)
+        if isinstance(self.sync_answer, Exception):
+            raise self.sync_answer
+        return self.sync_answer
+
+    def token(self, entity_id):
+        if self.token_problem is not None:
+            raise self.token_problem
+        return XeroToken(access_token="tok", xero_org_id=ORG)
 
 
 @pytest.fixture
-def flask(monkeypatch) -> FakeFlask:
-    fake = FakeFlask()
-    fake.answer = _Response(200, READ)
-    monkeypatch.setattr("requests.post", fake.post)
+def xero(monkeypatch) -> Xero:
+    fake = Xero()
+    monkeypatch.setattr(requests, "get", fake.get)
+    monkeypatch.setattr(requests, "post", fake.post)
+    monkeypatch.setattr(xero_cards, "xero_token", fake.token)
     return fake
 
 
-@pytest.mark.parametrize("method, path, action, body", ACTIONS)
-def test_each_card_goes_to_flask_with_its_action_and_body(client, shop, flask, method, path, action, body):
-    resp = call(client, shop, method, path, body)
-
-    assert resp.status_code == 200 and resp.json() == READ
-    sent, = flask.sent
-    assert sent["url"] == SETTINGS and sent["json"] == {"action": action, "body": body}
-    assert sent["timeout"][1] <= 60  # the read refreshes from Xero: a minute at most
-
-
-@pytest.mark.parametrize("method, path, action, body", ACTIONS)
-def test_the_assertion_names_this_company_and_this_person(client, shop, flask, method, path, action, body):
-    call(client, shop, method, path, body)
-
-    assertion = flask.sent[0]["headers"]["Authorization"].removeprefix("Bearer ")
-    claims = jwt.decode(assertion, settings.SECRET_KEY, algorithms=["HS256"])
-    assert claims["scope"] == "petty-cash-xero-settings"
-    assert (claims["entity_id"], claims["user_id"]) == (str(shop.entity.id), str(shop.owner.id))
-    assert claims["exp"] - claims["iat"] == 60
-
-
-@pytest.mark.parametrize("method, path", [("put", "/settings/xero/mapping"), ("put", "/settings/xero/account-codes")])
-def test_a_save_with_no_json_object_sends_an_empty_body(client, shop, flask, method, path):
-    """As Flask's ``_body()``: not an object is ``{}``, and Flask's own checks refuse it."""
-    resp = getattr(client, method)(url(shop.entity.id, path), "not json", content_type="application/json",
-                                   headers=headers(shop.owner.id))
-
-    assert resp.status_code == 200
-    assert flask.sent[0]["json"] == {"action": path.rsplit("/", 1)[1], "body": {}}
+@pytest.fixture
+def lists(shop):
+    """The company connected, with the accounts and the contact the mapping chooses from, and two
+    Petty Cash codes (400 ticked, 404 not) - Flask's fixture."""
+    Entity.objects.filter(id=shop.entity.id).update(xero_org_id=ORG, xero_tenant_name="Corner Shop Ltd",
+                                                    status="connected")
+    shop.entity.refresh_from_db()
+    for xero_id, kind, code, name, tick in (("acc-pc", "BANK", "", "Petty Cash", None),
+                                            ("acc-dep", "BANK", "", "Business Bank", None),
+                                            ("acc-sales", "REVENUE", "200", "Sales", None),
+                                            ("acc-owner", "CURRLIAB", "800", "Director Loan", None),
+                                            ("acc-adv", "EXPENSE", "400", "Advertising", True),
+                                            ("acc-fee", "EXPENSE", "404", "Bank Fees", False)):
+        account = AccountInfo.objects.create(entity_id=shop.entity.id, type=kind, name=name, xero_code=code,
+                                             xero_account_id=xero_id, status="ACTIVE")
+        if tick is not None:
+            EntityAccountXero.objects.create(account_id=account.id, name=name, type=kind, xero_account_id=xero_id,
+                                             is_active=tick)
+    XeroContactSync.objects.create(entity_id=shop.entity.id, xero_contact_id="con-1", name="Cash Customer")
+    return shop
 
 
-def test_a_company_not_live_on_xero_reads_so(client, shop, flask):
-    flask.answer = _Response(200, NOT_LIVE)
-
-    resp = call(client, shop, "get", "/settings/xero")
-
-    assert resp.status_code == 200 and resp.json() == NOT_LIVE
+def _field(body, key):
+    return next(f for f in body["mapping"] if f["key"] == key)
 
 
-def test_a_saved_mapping_comes_back_with_its_message(client, shop, flask):
-    saved = {**READ, "mapping_saved": True, "message": "Xero account mapping saved.", "first_save": True}
-    flask.answer = _Response(200, saved)
-
-    resp = call(client, shop, "put", "/settings/xero/mapping", MAPPING)
-
-    assert resp.status_code == 200 and resp.json() == saved
+# ---- Flask's -------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("method, path, action, body", SAVES)
-def test_flasks_not_live_409_comes_back_as_it_is(client, shop, flask, method, path, action, body):
-    refusal = {"error": "Xero isn't connected for this company. Connect it in the company's settings first."}
-    flask.answer = _Response(409, refusal)
+def test_the_cards_read_the_lists_once_the_connection_is_live(client, lists, xero):
+    body = call(client, lists, "get", "/settings/xero").json()
 
-    resp = call(client, shop, method, path, body)
+    assert (body["live"], body["organisation"], body["mapping_saved"]) == (True, "Corner Shop Ltd", False)
+    assert len(xero.syncs) == 1
+    assert [f["key"] for f in body["mapping"]] == list(MAPPING)
+    assert {o["id"] for o in _field(body, "main_bank")["options"]} == {"acc-pc", "acc-dep"}
+    assert _field(body, "cashsale_contact")["options"] == [{"id": "con-1", "name": "Cash Customer"}]
+    assert body["account_codes"] == [{"code": "400", "name": "Advertising", "selected": True},
+                                     {"code": "404", "name": "Bank Fees", "selected": False}]
+    assert body["permissions"] == {"edit_mapping": True, "edit_account_codes": True}
 
-    assert resp.status_code == 409 and resp.json() == refusal
+
+def test_without_a_live_connection_the_cards_say_so_and_refuse_a_save(client, lists, xero):
+    xero.listed = False  # revoked on Xero's side: the token still works
+
+    body = call(client, lists, "get", "/settings/xero").json()
+    assert (body["live"], body["mapping"], body["account_codes"]) == (False, None, None) and xero.syncs == []
+    assert Entity.objects.get(id=lists.entity.id).status == "disconnected"
+    assert call(client, lists, "put", "/settings/xero/mapping", MAPPING).status_code == 409
+    assert call(client, lists, "put", "/settings/xero/account-codes", {"codes": ["400"]}).json() == {
+        "error": xero_cards.NOT_LIVE}
 
 
-@pytest.mark.parametrize("path, body, message", [
-    ("/settings/xero/mapping", {**MAPPING, "cashsale_contact": ""}, "Choose the Cash Sales contact."),
-    ("/settings/xero/mapping", {**MAPPING, "deposit_bank": "acc-pc"},
-     "The Petty Cash Account and the Deposit Bank Account can't be the same. Choose a different one for each."),
-    ("/settings/xero/mapping", {**MAPPING, "deposit_bank": "acc-ghost"}, "Choose the Deposit Bank Account from the list."),
-    ("/settings/xero/account-codes", {"codes": []}, "Pick at least one account code."),
-    ("/settings/xero/account-codes", {"codes": "400"}, "Send the ticked account codes as a list."),
+def test_the_mapping_is_saved_and_read_back(client, lists, xero):
+    resp = call(client, lists, "put", "/settings/xero/mapping", MAPPING)
+
+    assert resp.status_code == 200, resp.json()
+    body = resp.json()
+    assert (body["message"], body["first_save"], body["mapping_saved"]) == ("Xero account mapping saved.", True, True)
+    assert _field(body, "deposit_bank")["selected"] == "acc-dep" and _field(body, "owners_contact")["selected"] == "con-1"
+    saved = EntityPettycashSettings.objects.get(entity_id=lists.entity.id)
+    assert saved.discrepancy_bank_account_id == saved.pettycash_account_id  # it mirrors the Petty Cash Account
+    assert call(client, lists, "put", "/settings/xero/mapping", MAPPING).json()["first_save"] is False
+
+
+@pytest.mark.parametrize("changes, message", [
+    ({"cashsale_contact": ""}, "Choose the Cash Sales contact."),
+    ({"deposit_bank": "acc-pc"}, "The Petty Cash Account and the Deposit Bank Account can't be the same. "
+                                 "Choose a different one for each."),
+    ({"deposit_bank": "acc-ghost"}, "Choose the Deposit Bank Account from the list."),
+    ({"owners_contact": "con-ghost"}, "Choose the Director / Responsible person from the list."),
+    ({"cashsale_account": "acc-adv"}, "Choose the Cash Sales account code from the list."),  # an expense isn't a sale
 ])
-def test_flasks_422s_come_back_as_they_are(client, shop, flask, path, body, message):
-    flask.answer = _Response(422, {"error": message})
-
-    resp = call(client, shop, "put", path, body)
-
+def test_a_mapping_that_does_not_add_up_is_refused(client, lists, xero, changes, message):
+    resp = call(client, lists, "put", "/settings/xero/mapping", {**MAPPING, **changes})
     assert resp.status_code == 422 and resp.json() == {"error": message}
-    assert flask.sent[0]["json"] == {"action": path.rsplit("/", 1)[1], "body": body}
+    assert not EntityPettycashSettings.objects.filter(entity_id=lists.entity.id).exists()
 
 
-def test_a_cashier_reads_but_may_save_nothing_and_flask_is_never_asked_to(client, shop, flask):
-    cashier = member(shop, EntityRole.CASHIER)
+def test_the_account_codes_keep_at_least_one(client, lists, xero):
+    done = call(client, lists, "put", "/settings/xero/account-codes", {"codes": ["404"]})
+    assert done.status_code == 200, done.json()
+    assert [c["selected"] for c in done.json()["account_codes"]] == [False, True]
+    assert done.json()["message"] == "Account codes saved."
 
-    assert call(client, shop, "get", "/settings/xero", user=cashier).status_code == 200
-    for _method, path, _action, body in SAVES:
-        resp = call(client, shop, "put", path, body, user=cashier)
+    refused = call(client, lists, "put", "/settings/xero/account-codes", {"codes": []})
+    assert refused.status_code == 422 and refused.json() == {"error": "Pick at least one account code."}
+    assert call(client, lists, "put", "/settings/xero/account-codes", {"codes": "400"}).status_code == 422
+
+
+def test_a_cashier_reads_but_changes_nothing(client, lists, xero):
+    person = member(lists, EntityRole.CASHIER)
+    body = call(client, lists, "get", "/settings/xero", user=person).json()
+    assert body["permissions"] == {"edit_mapping": False, "edit_account_codes": False}
+    for path, body in (("/settings/xero/mapping", MAPPING), ("/settings/xero/account-codes", {"codes": ["400"]})):
+        resp = call(client, lists, "put", path, body, user=person)
         assert resp.status_code == 403 and resp.json() == {"error": NO_RIGHT}
-    assert [s["json"]["action"] for s in flask.sent] == ["read"]
 
 
-def test_a_base_member_cannot_open_the_cards_and_flask_is_never_asked(client, shop, flask):
-    base = member(shop, EntityRole.ENTITY_BASE, "base@test.com")
-
-    resp = call(client, shop, "get", "/settings/xero", user=base)
-
-    assert resp.status_code == 403 and resp.json() == {"error": "You don't have permission to see these settings."}
-    for _method, path, _action, body in SAVES:
-        assert call(client, shop, "put", path, body, user=base).status_code == 403
-    assert flask.sent == []
+def test_a_base_member_cannot_open_the_cards(client, lists, xero):
+    person = member(lists, EntityRole.ENTITY_BASE, "member@test.com")
+    assert call(client, lists, "get", "/settings/xero", user=person).status_code == 403
+    assert xero.syncs == []
 
 
-@pytest.mark.parametrize("method, path, action, body", ACTIONS)
-@pytest.mark.parametrize("failure, status", [
-    (requests.ConnectionError("refused"), 503),
-    (requests.ReadTimeout("slow"), 504),
-    (_Response(502, text="<html>Bad gateway</html>"), 503),
-    (_Response(500, {"status": "error"}), 503),
-])
-def test_no_usable_answer_says_so(client, shop, flask, method, path, action, body, failure, status):
-    """A read changed nothing - try again; a save may have been kept - reload to see."""
-    flask.answer = failure
-
-    resp = call(client, shop, method, path, body)
-
-    expected = XERO_SETTINGS_UNREACHABLE if action == "read" else XERO_SETTINGS_UNCONFIRMED
-    assert resp.status_code == status and resp.json() == {"error": expected}
+# ---- the connection and the sync -------------------------------------------------------------
 
 
-def test_flask_refusing_this_services_assertion_is_our_fault_not_the_persons(client, shop, flask):
-    flask.answer = _Response(401, {"error": "unauthorized"})
+def test_the_sync_is_asked_with_this_companys_assertion(client, lists, xero):
+    call(client, lists, "get", "/settings/xero")
+    assertion = xero.syncs[0]["Authorization"].removeprefix("Bearer ")
+    claims = jwt.decode(assertion, settings.SECRET_KEY, algorithms=["HS256"])
+    assert (claims["scope"], claims["entity_id"]) == ("xero-sync", str(lists.entity.id))
 
-    resp = call(client, shop, "get", "/settings/xero")
 
-    assert resp.status_code == 500 and resp.json() == {"error": "Something went wrong on our side. Please try again."}
+@pytest.mark.parametrize("failure", [requests.ConnectionError("down"), _Resp(500, {})])
+def test_a_failed_sync_still_opens_the_cards_from_what_is_stored(client, lists, xero, failure):
+    xero.sync_answer = failure
+    body = call(client, lists, "get", "/settings/xero").json()
+    assert body["live"] is True and len(body["account_codes"]) == 2
+
+
+def test_a_company_with_no_working_token_is_not_live(client, lists, xero):
+    xero.token_problem = XeroTokenUnavailable(reconnect=True)
+    assert call(client, lists, "get", "/settings/xero").json()["live"] is False
+
+
+def test_the_token_service_unreachable_is_a_503_not_not_connected(client, lists, xero):
+    xero.token_problem = XeroTokenUnavailable(reconnect=False)
+    resp = call(client, lists, "get", "/settings/xero")
+    assert (resp.status_code, resp.json()) == (503, {"error": xero_cards.UNREACHABLE})
+
+
+def test_a_company_never_connected_is_not_live_and_xero_is_never_asked(client, shop, xero):
+    body = call(client, shop, "get", "/settings/xero").json()
+    assert body["live"] is False and xero.syncs == []
+
+
+# ---- what a save writes ----------------------------------------------------------------------
+
+
+def test_a_saved_choice_no_longer_active_is_still_offered(client, lists, xero):
+    call(client, lists, "put", "/settings/xero/mapping", MAPPING)
+    AccountInfo.objects.filter(xero_account_id="acc-owner").update(status="INACTIVE")
+    body = call(client, lists, "get", "/settings/xero").json()
+    assert "acc-owner" in {o["id"] for o in _field(body, "owners_account")["options"]}
+    assert _field(body, "owners_account")["selected"] == "acc-owner"
+
+
+def test_an_account_is_chosen_by_its_id_or_its_code(client, lists, xero):
+    resp = call(client, lists, "put", "/settings/xero/mapping", {**MAPPING, "cashsale_account": "200"})
+    assert resp.status_code == 200
+    saved = EntityPettycashSettings.objects.get(entity_id=lists.entity.id)
+    assert AccountInfo.objects.get(id=saved.cash_sale_account_id).xero_account_id == "acc-sales"
+
+
+def test_ticking_codes_lists_a_newly_eligible_account(client, lists, xero):
+    AccountInfo.objects.create(entity_id=lists.entity.id, type="OVERHEADS", name="Rent", xero_code="469",
+                               xero_account_id="acc-rent", status="ACTIVE")
+    # Not listed yet, so it alone can't be the one ticked code (Flask's rule)...
+    refused = call(client, lists, "put", "/settings/xero/account-codes", {"codes": ["469"]})
+    assert refused.json() == {"error": "Pick at least one account code."}
+    # ...but alongside a listed one, the save lists it ticked.
+    body = call(client, lists, "put", "/settings/xero/account-codes", {"codes": ["400", "469"]}).json()
+    assert {c["code"]: c["selected"] for c in body["account_codes"]} == {"400": True, "404": False, "469": True}

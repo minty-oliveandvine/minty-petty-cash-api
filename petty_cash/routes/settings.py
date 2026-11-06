@@ -7,10 +7,8 @@ sales methods here; the Xero cards forwarded to Flask. The country and currency 
 - ``POST /sales-methods`` ``{type, sale_info_id | name}``, ``PUT /sales-methods/{id}`` ``{name}``,
   ``DELETE /sales-methods/{id}``, ``PUT /sales-methods/order`` ``{type, method_ids}``.
 - ``GET /settings/xero``, ``PUT /settings/xero/mapping``, ``PUT /settings/xero/account-codes``: the
-  Xero cards, which check the connection live and refresh from Xero, so Flask does them
-  (``core/accounts_api.py::forward_xero_settings``, the owner's choice: this service holds no Xero
-  code) and its answer comes back unchanged. The rights are checked here first (``COA_VIEW`` to
-  read, ``XERO_RIGHTS`` to save; 403, no call); the connection, the 409s and 422s are Flask's.
+  Xero cards (``services/xero_cards.py``; done here since Phase 3 of the Flask retirement,
+  2026-11-06 - forwarded to Flask until then). ``COA_VIEW`` to read, ``XERO_RIGHTS`` to save (403).
 
 Every write answers the whole settings payload with a ``message``. Name lengths are the schema's -
 ``sale_info.sale_name`` and ``value_name`` are 80 characters, and a new method's ``value_name`` is
@@ -26,10 +24,10 @@ from django.http import JsonResponse
 from minty_db.models import Entity, SaleInfo
 from ninja import Router
 
-from core.accounts_api import forward_xero_settings
 from core.exceptions import Refused
 from core.policy import Permission, has_permission
 from petty_cash.routes._input import json_body
+from petty_cash.services import xero_cards
 from petty_cash.services.settings import (
     TYPES,
     SettingsRefused,
@@ -141,7 +139,7 @@ def save_xero_account_codes(request):
 
 
 def _xero(request, action: str, body):
-    answer, status = forward_xero_settings(request.company.id, request.auth_user.id, action, body)
+    answer, status = xero_cards.answer(request.company.id, action, body, may_edit=_may(request, *XERO_RIGHTS))
     return JsonResponse(answer, status=status)
 
 
