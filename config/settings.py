@@ -57,16 +57,15 @@ TEMPLATES = []
 
 # ---------------------------------------------------------------------------
 # Cross-service: the Flask app (Minty) - the token minter, the hand-off and Xero's only
-# credential holder, becoming accounts-api. Asked for a Xero access token (core/xero_tokens.py);
-# locally on 8000 (the owner's ports of 2026-10-14). ``PETTY_CASH_URL`` is NOT read: that name is
-# being freed for this service. Outside development there is no default - a wrong one would fail
-# every Xero call quietly.
+# credential holder, now minty-accounts-api. Asked for a Xero access token (core/xero_tokens.py);
+# locally accounts-api on 8002. Flask's old name for this address is NOT read.
+# Outside development there is no default - a wrong one would fail every Xero call quietly.
 # ---------------------------------------------------------------------------
-ACCOUNTS_API_URL = (os.environ.get("ACCOUNTS_API_URL") or ("http://localhost:8000" if DEBUG else "")).rstrip("/")
+ACCOUNTS_API_URL = (os.environ.get("ACCOUNTS_API_URL") or ("http://localhost:8002" if DEBUG else "")).strip().rstrip("/")
 if not ACCOUNTS_API_URL:
     raise ImproperlyConfigured(
-        "ACCOUNTS_API_URL is not set. It is the Flask app's address, which hands out Xero access "
-        "tokens; without it adding a supplier fails. Refusing to start."
+        "ACCOUNTS_API_URL is required and is not set. It is minty-accounts-api's address, which hands "
+        "out Xero access tokens; without it adding a supplier fails. Refusing to start."
     )
 #: Xero's accounting API (Flask's ``XERO_API_BASE_URL``).
 XERO_API_BASE_URL = (os.environ.get("XERO_API_BASE_URL") or "https://api.xero.com/api.xro/2.0").rstrip("/")
