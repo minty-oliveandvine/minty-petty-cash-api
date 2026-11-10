@@ -71,12 +71,15 @@ def _uuid(value) -> str | None:
 
 def company_for(user: User, entity_id) -> Company | None:
     """The company as the person may see it, or None - ``profile.entity_context``'s rule: a real
-    company, and the person a superuser or an approved member."""
+    company, not archived (``archived_at``, owner 2026-11-10; refused for superusers too, so
+    nothing says it exists), and the person a superuser or an approved member."""
     entity_id = _uuid(entity_id)
     if entity_id is None:
         return None  # not an id at all: Postgres would refuse the comparison outright
     org = Entity.objects.filter(id=entity_id).first()
-    if org is None or not (is_superuser(user) or has_entity_access(user, entity_id)):
+    if org is None or org.archived_at is not None:
+        return None
+    if not (is_superuser(user) or has_entity_access(user, entity_id)):
         return None
     role = (
         UserEntity.objects.filter(user_id=user.id, entity_id=entity_id).values_list("role", flat=True).first()

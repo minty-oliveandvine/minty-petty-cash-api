@@ -7,7 +7,7 @@ Status (2026-10-15): the door and every step of the report wizard are ported - O
 ## The one public read: `GET /api/petty-cash/v1/public/share/{initials}/{date}/{secret}`
 
 Flask's same route (its `docs/features/petty-cash-api.md`), ported 1:1 as a database-only read (`routes/public_share.py`, mounted at `/public` in `petty_cash/api.py`): the read-only Daily Report a share link shows, for the petty-cash web apps' own public `/share/{path}` page, replacing Flask's `/Minty_Report/{path}/` page.
-- **Decided by** `services/share.py::resolve_share`, Flask's check for check: the full path with its 32-character secret, an unexpired row, a token passing `verify_share_token` (Flask's `utils.verify_share_token`, byte for byte, with the shared `SECRET_KEY`) and naming the row's company and day, the company, a submitted report.
+- **Decided by** `services/share.py::resolve_share`, Flask's check for check: the full path with its 32-character secret, an unexpired row, a token passing `verify_share_token` (Flask's `utils.verify_share_token`, byte for byte, with the shared `SECRET_KEY`) and naming the row's company and day, the company (not archived - an archived company's link is the same 404, and its row is kept for a restore), a submitted report.
 - **Answer:** `company_name`, `transaction_date`, `currency_code`, `status`/`status_label`/`status_tone`, `publishing_status`, `submitted_at`, `submitted_by`, `kpis`, `sales {methods [{name, value_name, type, amount}], cash, total}`, `expenses {lines [{item, supplier_name, amount, receipts [{name}]}], total}`, `cash`, `closing_balance`, `expires_at` - the figures are `routes/report.py::report_figures`, the Daily Report's. No ids, permissions, options, line description or receipt access.
 - **Refusals:** 404 "This link doesn't work. Ask the person who shared it for a new link." for every reason but an expired link, 410 "This link has expired. Ask the person who shared it for a new link." (the row is deleted; so is one whose token fails its signature). A missing `SECRET_KEY` or any failure is the generic 500.
 - **Headers:** `Cache-Control: no-store`, `Referrer-Policy: no-referrer`; CORS through django-cors-headers (the API's origins, no credentials).
@@ -25,6 +25,7 @@ Every route is under `/api/petty-cash/v1/companies/{entity_id}`. The company com
 | A valid HS256 token (the shared `SECRET_KEY`, 60 s clock leeway) carrying `module == "billing"` (Flask's `MODULE_TOKEN_CLAIM`) and a `user_id` | `401 {"error": "unauthorized"}` |
 | The person exists and is `approved` | `401` |
 | Membership (an approved `user_entity` row), or a system superuser. A stranger, an unknown id and a malformed id all get the same answer. | `403` "You don't have access to that company." |
+| The company is not archived (`entities.archived_at`, owner 2026-11-10; `company_for`). Refused for superusers too, with the same answer as a stranger, so nothing says it exists | `403` "You don't have access to that company." |
 | The company is past onboarding | `409` "This company is still setting up. Finish setting it up to use Petty Cash." |
 | Petty Cash is on (`core/entitlements.py`, every unknown answers no) | `403` "Petty Cash isn't switched on for this company. An admin can turn it on in the company's modules." |
 

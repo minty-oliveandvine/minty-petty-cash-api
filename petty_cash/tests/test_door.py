@@ -91,6 +91,21 @@ def test_the_token_names_no_company_the_address_does(client, shop):
     assert resp.status_code == 403
 
 
+def test_an_archived_company_is_refused_as_no_company(client, shop):
+    """Archived (``entities.archived_at``, owner 2026-11-10) reads like a company they can't reach,
+    for its members and a superuser alike - nothing says it exists."""
+    from django.utils import timezone
+    from minty_db.models import Entity
+
+    Entity.objects.filter(id=shop.entity.id).update(archived_at=timezone.now())
+    admin = make_user("super@test.com", system_role=SystemRole.SUPERADMIN)
+
+    for person in (shop.owner, admin):
+        resp = _get(client, shop.entity.id, headers(person.id))
+        assert resp.status_code == 403
+        assert resp.json() == {"error": "You don't have access to that company."}
+
+
 @pytest.mark.parametrize("bad", ["not-a-uuid", "00000000-0000-4000-8000-000000000000"])
 def test_an_address_that_is_no_company_is_refused(client, shop, bad):
     resp = _get(client, bad, headers(shop.owner.id))

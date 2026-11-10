@@ -195,6 +195,17 @@ def test_a_link_whose_company_is_gone_is_404(shop, shared, monkeypatch):
     assert (resp.status_code, resp.json()) == (404, GONE)
 
 
+def test_a_link_whose_company_is_archived_is_404_and_kept(shop, shared):
+    """Archived (owner 2026-11-10) reads like a company that's gone; the row stays for a restore."""
+    from django.utils import timezone
+    from minty_db.models import Entity
+
+    Entity.objects.filter(id=shop.entity.id).update(archived_at=timezone.now())
+    resp = _read(shared[1]["path"])
+    assert (resp.status_code, resp.json()) == (404, GONE)
+    assert ShareLink.objects.filter(entity_id=shop.entity.id).exists()
+
+
 def test_an_expired_link_is_410_and_removed(shop, shared):
     ShareLink.objects.filter(entity_id=shop.entity.id).update(expires_at=datetime.now(UTC) - timedelta(minutes=1))
 

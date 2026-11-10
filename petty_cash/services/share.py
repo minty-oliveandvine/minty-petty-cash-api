@@ -175,6 +175,10 @@ def resolve_share(path_segment, remote_addr=None):
     if entity is None:
         logger.warning("share link refused: no company, link %s", link.id)
         raise LinkRefused("no_company")
+    if entity.archived_at is not None:
+        # Archived (owner 2026-11-10): answered as a missing company; the link row is kept for a restore.
+        logger.info("share link refused: company archived, link %s", link.id)
+        raise LinkRefused("no_company")
 
     report_date = datetime.strptime(token_transaction_date, "%Y-%m-%d").date()
     # Share-link target: SUBMITTED reports only, never a draft.
