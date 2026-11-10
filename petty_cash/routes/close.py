@@ -42,6 +42,7 @@ from petty_cash.services.submit import (
     submit_problem,
     submit_report,
 )
+from petty_cash.services.xero_settings import minty_on_its_own
 
 router = Router()
 
@@ -183,7 +184,8 @@ def report_outcome(request, report_id: str):
                  "xero_integrated": bool(report.xero_integrated),
                  # it has been to Xero, even if changed since: a publish warns (report_actions)
                  "was_published": was_published(report)},
-        "can_publish": has_permission(request.auth_user, Permission.REPORT_PUBLISH, entity_id),
+        "can_publish": has_permission(request.auth_user, Permission.REPORT_PUBLISH, entity_id)
+        and not minty_on_its_own(entity_id),  # Xero optional: nowhere to publish to
         "is_today": report.transaction_date == today(),
         "next_day": (report.transaction_date + timedelta(days=1)).isoformat(),
     }

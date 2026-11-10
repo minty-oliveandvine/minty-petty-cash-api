@@ -31,6 +31,7 @@ from petty_cash.services.publish_reasons import publish_reasons
 from petty_cash.services.report_actions import was_published
 from petty_cash.services.report_page import report_status
 from petty_cash.services.reports import currency_code, last_submitted
+from petty_cash.services.xero_settings import minty_on_its_own
 
 router = Router()
 
@@ -122,7 +123,8 @@ def history(request):
         "total_count": data["total_count"],
         "latest_report_id": latest_id,
         "currency_code": currency_code(entity_id),
-        "can_publish": has_permission(person, Permission.REPORT_PUBLISH, entity_id),
+        "can_publish": has_permission(person, Permission.REPORT_PUBLISH, entity_id)
+        and not minty_on_its_own(entity_id),  # Xero optional: nowhere to publish to
     }
 
 

@@ -37,13 +37,20 @@ import threading
 import requests
 from django.db import DatabaseError, close_old_connections, connection, transaction
 from django.utils import timezone
-from minty_db.models import Entity, Report, ReportHistory
+from minty_db.models import (
+    AccountInfo,
+    Entity,
+    Report,
+    ReportExpense,
+    ReportHistory,
+    XeroContactSync,
+)
 from minty_shared import logctx
 
 from core.xero_tokens import XeroTokenUnavailable, xero_token
 from petty_cash.services.publish_reasons import latest_reason_items
 from petty_cash.services.reports import currency_code
-from petty_cash.services.xero_settings import settings_complete
+from petty_cash.services.xero_settings import minty_on_its_own, settings_complete
 from petty_cash.xero import errors as pub_err
 from petty_cash.xero.steps import Run, publish_report, system_account_errors
 
@@ -55,6 +62,8 @@ DRAFT = "This report is still a draft. Submit the day before publishing it."
 RECONNECT = "I've lost access to your Xero account. Mind reconnecting it in Settings?"
 NO_TOKEN_SERVICE = "I couldn't reach Xero to start the publish. Try again in a moment."
 INCOMPLETE = "Xero settings incomplete. Please configure entity settings first."
+#: A company keeping its books in Minty with no Xero organisation (Xero optional, 2026-11-10).
+NOT_IN_XERO = "This company keeps its books in Minty and isn't connected to Xero, so there's nowhere to publish to."
 CONNECTIONS_URL = "https://api.xero.com/connections"
 
 
@@ -98,6 +107,8 @@ def start_publish(entity_id, report: Report, person) -> dict:
     """Start the publish of ``report`` (this company's, viewable, ``REPORT_PUBLISH`` - checked by the
     route). The 202 answer; raises ``PublishRefused``."""
     entity = Entity.objects.get(id=entity_id)
+    if minty_on_its_own(entity_id):
+        raise PublishRefused(NOT_IN_XERO, 409)
     try:
         token = xero_token(entity_id)
     except XeroTokenUnavailable as unavailable:
@@ -164,6 +175,22 @@ def _retry_filter(report: Report, prior) -> dict | None:
     return {"modules": targets["modules"], "expense_ids": targets["expense_ids"]}
 
 
+def _snapshot(report_id) -> None:
+    """What the publish sent, frozen on each expense line (Xero optional, 2026-11-10): the account's
+    code and name and the supplier's name. A published report shows these; no sync or later code
+    change rewrites them - only the next publish."""
+    rows = list(ReportExpense.objects.filter(report_id=report_id))
+    accounts = {a.id: a for a in AccountInfo.objects.filter(id__in=[r.account_id for r in rows if r.account_id])}
+    contacts = {c.id: c for c in XeroContactSync.objects.filter(id__in=[r.contact_id for r in rows if r.contact_id])}
+    for row in rows:
+        account, contact = accounts.get(row.account_id), contacts.get(row.contact_id)
+        ReportExpense.objects.filter(id=row.id).update(
+            published_account_code=((account.xero_code or "")[:10] or None) if account else None,
+            published_account_name=account.name if account else None,
+            published_contact_name=contact.name if contact else None,
+        )
+
+
 def _finish(report_id, user_id, result: dict) -> None:
     with transaction.atomic():
         report = Report.objects.select_for_update().get(id=report_id)
@@ -172,6 +199,7 @@ def _finish(report_id, user_id, result: dict) -> None:
             report.publishing_status = "completed"
             report.status = "published"
             report.published_at = timezone.now()
+            _snapshot(report.id)
             ReportHistory.objects.create(report_id=report.id, user_id=user_id, action="published")
             logger.info("Publish: report %s is in Xero", report.id)
         else:

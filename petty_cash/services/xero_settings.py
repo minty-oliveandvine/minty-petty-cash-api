@@ -9,7 +9,7 @@ does, so the answer is the view's: a slot is set when its row id is set and the 
 
 from __future__ import annotations
 
-from minty_db.models import AccountInfo, EntityPettycashSettings, XeroContactSync
+from minty_db.models import AccountInfo, Entity, EntityPettycashSettings, XeroContactSync
 
 #: The nine slots, in the dashboard's order (Flask's ``blueprints/shared/views.PETTYCASH_SLOTS``):
 #: (settings column, label, kind).
@@ -24,6 +24,25 @@ PETTYCASH_SLOTS = (
     ("discrepancy_bank_account_id", "Discrepancy Bank Account", "account"),
     ("discrepancy_contact_id", "Discrepancy Contact", "contact"),
 )
+
+#: A company keeping its books in Minty (Xero optional, 2026-11-10) needs only the five accounts
+#: daily closing uses, named as onboarding's Accounting Setup (4.5) names them. No contact: those are
+#: Xero's; the discrepancy bank follows the petty cash account, as it does for a Xero company.
+MINTY_SLOTS = (
+    ("pettycash_account_id", "Petty cash"),
+    ("bank_account_id", "Bank you deposit into"),
+    ("cash_sale_account_id", "Cash sales"),
+    ("director_account_id", "Paid personally"),
+    ("discrepancy_account_id", "Cash difference"),
+)
+
+
+def minty_on_its_own(entity_id) -> bool:
+    """The company keeps its books in Minty with no Xero organisation (``setup_mode = 'minty'``).
+    Connected later, Xero's rules apply again."""
+    row = Entity.objects.filter(id=entity_id).values_list("setup_mode", "xero_org_id").first()
+    return row is not None and row[0] == "minty" and not row[1]
+
 
 _ROLE_COLUMN = {
     "pettycash": "pettycash_account_id",
@@ -88,6 +107,11 @@ def contact_for_role(entity_id, role: str) -> XeroContactSync | None:
 def missing_slots(entity_id) -> list[str]:
     """Labels of the slots not mapped yet, in the dashboard's order."""
     row = _settings(entity_id)
+    if minty_on_its_own(entity_id):
+        chosen = {getattr(row, column, None) if row is not None else None for column, _ in MINTY_SLOTS} - {None}
+        found = set(AccountInfo.objects.filter(id__in=chosen).values_list("id", flat=True))
+        return [label for column, label in MINTY_SLOTS
+                if (getattr(row, column, None) if row is not None else None) not in found]
     if row is None:
         return [label for _, label, _ in PETTYCASH_SLOTS]
     ids = {column: getattr(row, column) for column, _, _ in PETTYCASH_SLOTS}

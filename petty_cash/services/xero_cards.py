@@ -38,7 +38,7 @@ from minty_db.models import (
 from core.accounts_api import assertion_headers, service_assertion
 from core.xero_tokens import XeroTokenUnavailable, xero_token
 from petty_cash.services.publish import sync_connection_status
-from petty_cash.services.xero_settings import mask_account_number
+from petty_cash.services.xero_settings import mask_account_number, minty_on_its_own
 
 logger = logging.getLogger("petty-cash-api")
 
@@ -248,10 +248,83 @@ def save_mapping(entity: Entity, values: dict) -> list[str]:
     return []
 
 
+# ---- a company keeping its books in Minty (Xero optional, 2026-11-10) ----------------------------
+
+#: The five accounts daily closing uses - the mapping's account fields, minus the discrepancy bank,
+#: which follows the petty cash account. No contact: contacts are Xero's.
+MINTY_KEYS = ("main_bank", "deposit_bank", "cashsale_account", "owners_account", "discrepancy_account")
+
+
+def _minty_options(entity_id) -> dict[str, list[dict]]:
+    """Each list's options among the company's own active accounts, named by ``public_id``."""
+    from petty_cash.services.expenses import public_id  # the expense screens' naming, one place
+
+    accounts = list(AccountInfo.objects.filter(entity_id=entity_id, status="ACTIVE", record_status="active")
+                    .order_by("xero_code", "name"))
+    return {name: [{"id": public_id(a), "name": a.name, "code": a.xero_code or "", "row": a.id}
+                   for a in accounts if keep(a.type)] for name, keep in _LISTS.items()}
+
+
+def minty_read(entity_id) -> list[dict]:
+    """The mapping card's fields for such a company: the five accounts, chosen from its own."""
+    options = _minty_options(entity_id)
+    row = EntityPettycashSettings.objects.filter(entity_id=entity_id).first()
+    fields = []
+    for key, label, _kind, listed, column in FIELDS:
+        if key not in MINTY_KEYS:
+            continue
+        chosen = getattr(row, column, None) if row is not None else None
+        offered = options[listed]
+        fields.append({
+            "key": key, "label": label, "kind": "account",
+            "options": [{"id": o["id"], "name": o["name"], "code": o["code"]} for o in offered],
+            "selected": next((o["id"] for o in offered if o["row"] == chosen), None),
+        })
+    return fields
+
+
+def minty_save(entity: Entity, body: dict, may_edit: bool) -> tuple[dict, int]:
+    """Write the five choices (and the discrepancy bank, which follows the petty cash account)."""
+    values = {key: str(body.get(key) or "").strip() for key in MINTY_KEYS}
+    labels = {key: label for key, label, *_ in FIELDS}
+    missing = [labels[key] for key in MINTY_KEYS if not values[key]]
+    if missing:
+        return {"error": " ".join(f"Choose the {label}." for label in missing)}, 422
+    if values["main_bank"] == values["deposit_bank"]:
+        return {"error": "The Petty Cash Account and the Deposit Bank Account can't be the same. "
+                         "Choose a different one for each."}, 422
+    options = _minty_options(entity.id)
+    resolved, not_offered = {}, []
+    for key, label, _kind, listed, column in FIELDS:
+        if key not in MINTY_KEYS:
+            continue
+        found = next((o["row"] for o in options[listed] if o["id"] == values[key]), None)
+        if found is None:
+            not_offered.append(label)
+        resolved[column] = found
+    if not_offered:
+        return {"error": " ".join(f"Choose the {label} from the list." for label in not_offered)}, 422
+    resolved["discrepancy_bank_account_id"] = resolved["pettycash_account_id"]
+    first_save = not EntityPettycashSettings.objects.filter(entity_id=entity.id).exists()
+    EntityPettycashSettings.objects.update_or_create(entity_id=entity.id, defaults=resolved)
+    logger.info("Account mapping saved for company %s (Minty on its own)", entity.id)
+    return {**payload(entity, may_edit), "message": "Account mapping saved.", "first_save": first_save}, 200
+
+
 # ---- the answer ------------------------------------------------------------------------------
 
 
 def payload(entity: Entity, may_edit: bool) -> dict:
+    if minty_on_its_own(entity.id):
+        return {
+            "live": False,
+            "minty": True,
+            "organisation": None,
+            "mapping": minty_read(entity.id),
+            "mapping_saved": EntityPettycashSettings.objects.filter(entity_id=entity.id).exists(),
+            "account_codes": account_codes(entity.id),
+            "permissions": {"edit_mapping": may_edit, "edit_account_codes": may_edit},
+        }
     live = is_live(entity)
     if live:
         refresh_from_xero(entity)
@@ -268,6 +341,17 @@ def payload(entity: Entity, may_edit: bool) -> dict:
 def answer(entity_id, action: str, body, *, may_edit: bool) -> tuple[dict, int]:
     """``read``, ``mapping`` or ``account-codes`` (the route has checked the person's rights)."""
     entity = Entity.objects.get(id=entity_id)
+    if minty_on_its_own(entity_id) and action != "read":
+        body = body if isinstance(body, dict) else {}
+        if action == "mapping":
+            return minty_save(entity, body, may_edit)
+        codes = body.get("codes")
+        if not isinstance(codes, list) or not all(isinstance(c, str) for c in codes):
+            return {"error": "Send the ticked account codes as a list."}, 422
+        problem = save_account_codes(entity, codes)
+        if problem:
+            return {"error": problem}, 422
+        return {**payload(entity, may_edit), "message": "Account codes saved."}, 200
     try:
         if action == "read":
             return payload(entity, may_edit), 200

@@ -60,7 +60,10 @@ from petty_cash.services.expenses import (
     checked_receipt,
     delete_expense,
     expense_accounts,
+    find_account,
+    find_supplier,
     lines,
+    public_id,
     save_expenses_step,
     suppliers,
     update_expense,
@@ -106,9 +109,9 @@ def lines_payload(rows) -> list[dict]:
                 "item": row.item or "",
                 "amount": out(row.amount),
                 "remarks": row.remarks or "",
-                "supplier": {"id": contact.xero_contact_id, "name": contact.name} if contact else None,
+                "supplier": {"id": public_id(contact), "name": contact.name} if contact else None,
                 "account": (
-                    {"id": account.xero_account_id, "code": account.xero_code or "", "name": account.name}
+                    {"id": public_id(account), "code": account.xero_code or "", "name": account.name}
                     if account
                     else None
                 ),
@@ -133,8 +136,8 @@ def expenses_page(request):
         "draft": draft_payload(draft),
         "lines": lines_payload(rows),
         "total": out(sum((cents(r.amount) for r in rows), Decimal("0.00"))),
-        "suppliers": [{"id": c.xero_contact_id, "name": c.name} for c in suppliers(entity_id)],
-        "accounts": [{"id": a.xero_account_id, "code": a.xero_code or "", "name": a.name}
+        "suppliers": [{"id": public_id(c), "name": c.name} for c in suppliers(entity_id)],
+        "accounts": [{"id": public_id(a), "code": a.xero_code or "", "name": a.name}
                      for a in expense_accounts(entity_id)],
         "permissions": {"create_supplier": has_permission(request.auth_user, Permission.CONTACT_CREATE, entity_id)},
     }
@@ -177,10 +180,10 @@ def add_expense_line(request):
     remarks = (form.get("remarks") or "").strip()
     if len(remarks) > MAX_REMARKS:
         raise Refused(f"Keep the description to {MAX_REMARKS} characters or fewer.", 422)
-    supplier = suppliers(entity_id).filter(xero_contact_id=form.get("supplier_id") or "").first()
+    supplier = find_supplier(entity_id, form.get("supplier_id"))
     if supplier is None:
         raise Refused("Choose a supplier from the list.", 422)
-    account = expense_accounts(entity_id).filter(xero_account_id=form.get("account_id") or "").first()
+    account = find_account(entity_id, form.get("account_id"))
     if account is None:
         raise Refused("Choose an account code from the list.", 422)
     data, mime, name = _receipt(request)
@@ -250,11 +253,11 @@ def edit_expense_line(request, line_id: str):
             raise Refused(f"Keep the description to {MAX_REMARKS} characters or fewer.", 422)
     supplier = account = None
     if form.get("supplier_id"):
-        supplier = suppliers(entity_id).filter(xero_contact_id=form.get("supplier_id")).first()
+        supplier = find_supplier(entity_id, form.get("supplier_id"))
         if supplier is None:
             raise Refused("Choose a supplier from the list.", 422)
     if form.get("account_id"):
-        account = expense_accounts(entity_id).filter(xero_account_id=form.get("account_id")).first()
+        account = find_account(entity_id, form.get("account_id"))
         if account is None:
             raise Refused("Choose an account code from the list.", 422)
     uploads = [f for f in files.getlist("receipt") if f and (f.name or "").strip()]
@@ -363,4 +366,4 @@ def add_supplier(request):
         row = create_supplier(entity_id, name)
     except SupplierRefused as refused:
         raise Refused(refused.message, refused.status) from None
-    return JsonResponse({"id": row.xero_contact_id, "name": row.name}, status=201)
+    return JsonResponse({"id": public_id(row), "name": row.name}, status=201)

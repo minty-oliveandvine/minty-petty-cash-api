@@ -25,7 +25,7 @@ from minty_shared import ai
 from minty_shared.model_input import prepare_for_model
 from pydantic import BaseModel, Field
 
-from petty_cash.services.expenses import expense_accounts, suppliers
+from petty_cash.services.expenses import expense_accounts, public_id, suppliers
 
 logger = logging.getLogger("petty-cash-api")
 
@@ -117,13 +117,13 @@ def build_context(entity_id) -> dict | None:
     if entity is None:
         return None
     accounts = sorted(
-        ({"id": a.xero_account_id, "code": a.xero_code or "", "name": a.name or ""}
-         for a in expense_accounts(entity_id) if a.xero_account_id),
+        ({"id": public_id(a), "code": a.xero_code or "", "name": a.name or ""}
+         for a in expense_accounts(entity_id)),
         key=lambda a: (a["code"], a["id"]),
     )
     contacts = sorted(
-        ({"id": c.xero_contact_id, "name": c.name or ""}
-         for c in suppliers(entity_id) if c.xero_contact_id),
+        ({"id": public_id(c), "name": c.name or ""}
+         for c in suppliers(entity_id)),
         key=lambda c: (c["name"], c["id"]),
     )
     if not accounts and not contacts:

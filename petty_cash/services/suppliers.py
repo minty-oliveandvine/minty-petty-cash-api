@@ -14,6 +14,7 @@ from django.db import IntegrityError, transaction
 from minty_db.models import Entity, XeroContactSync
 
 from core.xero_tokens import XeroTokenUnavailable, xero_token
+from petty_cash.services.xero_settings import minty_on_its_own
 
 logger = logging.getLogger("petty-cash-api")
 
@@ -33,10 +34,25 @@ class SupplierRefused(Exception):
         self.status = status
 
 
+def _kept_in_minty(entity_id, name: str) -> XeroContactSync:
+    """A company keeping its books in Minty (Xero optional, 2026-11-10): the supplier is Minty's own
+    row, no Xero id. A name the company already has (ignoring case and spaces) is that supplier."""
+    name = " ".join(name.split())[:MAX_NAME]
+    existing = next((c for c in XeroContactSync.objects.filter(entity_id=entity_id)
+                     if " ".join((c.name or "").split()).lower() == name.lower()), None)
+    if existing is not None:
+        return existing
+    row = XeroContactSync.objects.create(entity_id=entity_id, name=name, source="user")
+    logger.info("Supplier %s kept in Minty for company %s", row.id, entity_id)
+    return row
+
+
 def create_supplier(entity_id, name: str) -> XeroContactSync:
     """Create ``name`` as a contact in the company's Xero organisation and store its synced row
     (found again by its Xero id if one exists)."""
     entity = Entity.objects.filter(id=entity_id).first()
+    if entity is not None and minty_on_its_own(entity_id):
+        return _kept_in_minty(entity_id, name)
     if entity is None or not entity.xero_org_id:
         raise SupplierRefused(NOT_CONNECTED)
     try:

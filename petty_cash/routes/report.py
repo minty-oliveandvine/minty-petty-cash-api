@@ -41,7 +41,7 @@ from petty_cash.routes._input import form_and_files, json_body
 from petty_cash.routes.close import _iso, _sales_history, report_totals
 from petty_cash.routes.expenses import _company_line, lines_payload
 from petty_cash.services.cash import expected_cash
-from petty_cash.services.expenses import expense_accounts, lines, suppliers
+from petty_cash.services.expenses import expense_accounts, lines, public_id, suppliers
 from petty_cash.services.publish import PublishRefused, start_publish
 from petty_cash.services.publish_reasons import publish_reasons
 from petty_cash.services.report_actions import (
@@ -62,6 +62,7 @@ from petty_cash.services.report_page import cash_summary, report_facts, report_s
 from petty_cash.services.reports import currency_code, is_stale_draft
 from petty_cash.services.sales import cash_sales_from_detail, report_methods
 from petty_cash.services.share import ShareRefused, create_share_link
+from petty_cash.services.xero_settings import minty_on_its_own
 
 router = Router()
 
@@ -155,14 +156,15 @@ def report_payload(request, report: Report) -> dict:
             "edit": status != "draft" and latest and has_permission(user, Permission.REPORT_EDIT_OWN, entity_id),
             # a stale draft (dated before the last submitted day) may go though it is not the latest
             "delete": (latest or is_stale_draft(report)) and can_delete_report(user, report),
-            "publish": has_permission(user, Permission.REPORT_PUBLISH, entity_id),
+            "publish": has_permission(user, Permission.REPORT_PUBLISH, entity_id)
+            and not minty_on_its_own(entity_id),  # Xero optional: nowhere to publish to
             "share": status != "draft",
             "edit_details": edit_details,
         },
         # what an expense line may be changed to - only when it may be
         "options": {
-            "suppliers": [{"id": c.xero_contact_id, "name": c.name} for c in suppliers(entity_id)],
-            "accounts": [{"id": a.xero_account_id, "code": a.xero_code or "", "name": a.name}
+            "suppliers": [{"id": public_id(c), "name": c.name} for c in suppliers(entity_id)],
+            "accounts": [{"id": public_id(a), "code": a.xero_code or "", "name": a.name}
                          for a in expense_accounts(entity_id)],
         } if edit_details else None,
     }

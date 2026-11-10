@@ -34,9 +34,9 @@ from petty_cash.files import storage
 from petty_cash.services.expenses import (
     ExpenseRefused,
     checked_receipt,
-    expense_accounts,
+    find_account,
+    find_supplier,
     replace_receipts,
-    suppliers,
 )
 from petty_cash.services.reports import log_history
 
@@ -170,11 +170,11 @@ def edit_expense_line(report: Report, line: ReportExpense, user, *, remarks=None
             raise EditRefused(f"Keep the description to {MAX_REMARKS} characters or fewer.", 422)
     supplier = account = None
     if supplier_id is not None:
-        supplier = suppliers(entity_id).filter(xero_contact_id=supplier_id).first()
+        supplier = find_supplier(entity_id, supplier_id)
         if supplier is None:
             raise EditRefused("Choose a supplier from the list.", 422)
     if account_id is not None:
-        account = expense_accounts(entity_id).filter(xero_account_id=account_id).first()
+        account = find_account(entity_id, account_id)
         if account is None:
             raise EditRefused("Choose an account code from the list.", 422)
     checked = []

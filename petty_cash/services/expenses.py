@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import mimetypes
 import os
+import uuid
 from decimal import Decimal
 
 from django.conf import settings
@@ -62,6 +63,35 @@ def checked_receipt(upload) -> tuple[bytes, str, str]:
     if mime is None:
         raise ExpenseRefused("Attach a PDF, JPEG or PNG file.")
     return data, mime, upload.name
+
+
+def public_id(row: AccountInfo | XeroContactSync) -> str:
+    """How an account or supplier is named to the screens: its Xero id, or (Xero optional,
+    2026-11-10) its own id when it is Minty's alone - made by a company keeping its books in Minty."""
+    xero_id = row.xero_account_id if isinstance(row, AccountInfo) else row.xero_contact_id
+    return xero_id or str(row.id)
+
+
+def _by_public_id(rows, xero_field: str, value):
+    """The row a screen named (``public_id``), or None."""
+    value = str(value or "").strip()
+    if not value:
+        return None
+    found = rows.filter(**{xero_field: value}).first()
+    if found is not None:
+        return found
+    try:
+        return rows.filter(**{xero_field: None}, id=uuid.UUID(value)).first()
+    except ValueError:
+        return None
+
+
+def find_supplier(entity_id, value) -> XeroContactSync | None:
+    return _by_public_id(suppliers(entity_id), "xero_contact_id", value)
+
+
+def find_account(entity_id, value) -> AccountInfo | None:
+    return _by_public_id(expense_accounts(entity_id), "xero_account_id", value)
 
 
 def suppliers(entity_id):

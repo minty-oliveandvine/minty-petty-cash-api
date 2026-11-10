@@ -86,7 +86,8 @@ def settings_payload(request) -> dict:
     return {
         "sales_methods": methods(entity_id) if may_view_sales else {t: [] for t in TYPES},
         "available": available(entity_id) if may_view_sales else {t: [] for t in TYPES},
-        "xero_connected": bool(org.xero_org_id),
+        # a disconnect keeps the organisation (Xero optional, 2026-11-10): the status says connected
+        "xero_connected": bool(org.xero_org_id) and org.status != "disconnected",
         "permissions": {
             "edit_xero": _may(request, *XERO_RIGHTS),
             "view_sales_methods": may_view_sales,

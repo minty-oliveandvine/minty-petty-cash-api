@@ -72,6 +72,16 @@ def test_the_settings_read(client, shop, methods):
     assert "edit_xero" in body["permissions"] and "edit_country" not in body["permissions"]
 
 
+@pytest.mark.parametrize("status, connected", [("connected", True), ("disconnected", False)])
+def test_a_kept_organisation_is_not_a_connection(client, shop, methods, status, connected):
+    """A disconnect keeps the organisation (Xero optional, 2026-11-10); only the status says connected."""
+    from minty_db.models import Entity
+
+    Entity.objects.filter(id=shop.entity.id).update(xero_org_id="org-1", status=status)
+
+    assert call(client, shop, "get", "/settings").json()["xero_connected"] is connected
+
+
 def test_a_method_another_company_uses_is_marked_shared(client, shop, methods):
     seed_methods(make_entity(shop.owner, name="Other Co"), electronic=("Visa",), delivery=())
 
