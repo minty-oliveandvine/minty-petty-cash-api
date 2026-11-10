@@ -55,6 +55,8 @@ def create_supplier(entity_id, name: str) -> XeroContactSync:
         return _kept_in_minty(entity_id, name)
     if entity is None or not entity.xero_org_id:
         raise SupplierRefused(NOT_CONNECTED)
+    if entity.status == "disconnected":  # a disconnect keeps the organisation (2026-11-10)
+        raise SupplierRefused(NO_ENTRY)
     try:
         token = xero_token(entity_id)
     except XeroTokenUnavailable as unavailable:

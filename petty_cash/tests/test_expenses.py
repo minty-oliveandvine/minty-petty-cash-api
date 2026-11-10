@@ -556,7 +556,7 @@ def test_a_contact_created_on_the_expenses_step_is_saved_and_carried_by_the_new_
 
     fake = FakeHttp()
     monkeypatch.setattr("requests.post", fake.post)
-    Entity.objects.filter(id=shop.entity.id).update(xero_org_id=ORG)
+    Entity.objects.filter(id=shop.entity.id).update(xero_org_id=ORG, status="connected")
     draft = _draft(shop)
 
     made = client.post(url(shop.entity.id, "/suppliers"), {"name": "Corner Bakery"},

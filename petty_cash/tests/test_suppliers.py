@@ -59,7 +59,7 @@ def http(monkeypatch) -> FakeHttp:
 
 @pytest.fixture
 def connected(shop):
-    Entity.objects.filter(id=shop.entity.id).update(xero_org_id=ORG)
+    Entity.objects.filter(id=shop.entity.id).update(xero_org_id=ORG, status="connected")
     return shop
 
 
@@ -139,6 +139,17 @@ def test_a_company_without_xero_cannot_add_one(client, shop, http):
 
     assert resp.status_code == 409
     assert resp.json()["error"] == "This entity isn't connected to Xero yet. Could you ask an admin to connect it?"
+    assert http.sent == []
+
+
+def test_a_disconnected_company_keeping_its_organisation_is_asked_to_reconnect(client, connected, http):
+    """A disconnect keeps the organisation (2026-11-10): no token is asked for, the answer is at once."""
+    Entity.objects.filter(id=connected.entity.id).update(status="disconnected")
+
+    resp = _post(client, connected, {"name": "Corner Bakery"})
+
+    assert resp.status_code == 409
+    assert resp.json()["error"] == "Xero wouldn't let me in. Could you ask an admin to reconnect it?"
     assert http.sent == []
 
 
