@@ -188,3 +188,36 @@ def test_a_xero_company_is_still_offered_publish(client, shop):
     report = make_report(shop.entity, dt.date(2026, 11, 4), created_by=shop.owner.id)
     outcome = client.get(url(shop.entity.id, f"/reports/{report.id}/outcome"), headers=headers(shop.owner.id))
     assert outcome.json()["can_publish"] is True
+
+
+# ---- a company that banks all its sales (owner's brief, 2026-11-10) -----------------------------
+
+
+def test_a_company_banking_all_its_sales_needs_no_cash_sale_account(client, minty):
+    Entity.objects.filter(id=minty.entity.id).update(uses_sales_cash=False)
+    _five(minty.entity, skip=("cash_sale_account_id",))
+    assert missing_slots(minty.entity.id) == []
+    home = client.get(url(minty.entity.id, "/home"), headers=headers(minty.owner.id)).json()
+    assert home["xero_settings"] == {"complete": True, "missing": []}
+
+    # With cash sales, the same company is still asked for it.
+    Entity.objects.filter(id=minty.entity.id).update(uses_sales_cash=True)
+    assert missing_slots(minty.entity.id) == ["Cash sales"]
+
+
+def test_its_account_mapping_saves_without_a_cash_sale_account(client, minty):
+    Entity.objects.filter(id=minty.entity.id).update(uses_sales_cash=False)
+    _five(minty.entity)
+    row = EntityPettycashSettings.objects.get(entity_id=minty.entity.id)
+    body = {"main_bank": str(row.pettycash_account_id), "deposit_bank": str(row.bank_account_id),
+            "cashsale_account": "", "owners_account": str(row.director_account_id),
+            "discrepancy_account": str(row.discrepancy_account_id)}
+    resp = client.put(url(minty.entity.id, "/settings/xero/mapping"), body, content_type="application/json",
+                      headers=headers(minty.owner.id))
+    assert resp.status_code == 200, resp.json()
+    assert EntityPettycashSettings.objects.get(entity_id=minty.entity.id).cash_sale_account_id is None
+
+    Entity.objects.filter(id=minty.entity.id).update(uses_sales_cash=True)
+    resp = client.put(url(minty.entity.id, "/settings/xero/mapping"), body, content_type="application/json",
+                      headers=headers(minty.owner.id))
+    assert resp.status_code == 422 and "Cash Sales account code" in resp.json()["error"]

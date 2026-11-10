@@ -245,3 +245,21 @@ def test_ticking_codes_lists_a_newly_eligible_account(client, lists, xero):
     # ...but alongside a listed one, the save lists it ticked.
     body = call(client, lists, "put", "/settings/xero/account-codes", {"codes": ["400", "469"]}).json()
     assert {c["code"]: c["selected"] for c in body["account_codes"]} == {"400": True, "404": False, "469": True}
+
+
+# ---- a company that banks all its sales (owner's brief, 2026-11-10) -----------------------------
+
+
+def test_a_xero_company_banking_all_its_sales_needs_no_cash_sale_account_or_contact(client, lists, xero):
+    from petty_cash.services.xero_settings import missing_slots
+
+    Entity.objects.filter(id=lists.entity.id).update(uses_sales_cash=False)
+    read = call(client, lists, "get", "/settings/xero").json()
+    assert {f["key"] for f in read["mapping"] if f["optional"]} == {"cashsale_account", "cashsale_contact"}
+    resp = call(client, lists, "put", "/settings/xero/mapping",
+                {**MAPPING, "cashsale_account": "", "cashsale_contact": ""})
+    assert resp.status_code == 200, resp.json()
+    saved = EntityPettycashSettings.objects.get(entity_id=lists.entity.id)
+    assert (saved.cash_sale_account_id, saved.cash_sale_contact_id) == (None, None)
+    missing = missing_slots(lists.entity.id)
+    assert "Cash Sale Account" not in missing and "Cash Sale Contact" not in missing

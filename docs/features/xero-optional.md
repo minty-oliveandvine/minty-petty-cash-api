@@ -35,3 +35,11 @@ minty-petty-cash-web draws the same cards for it, titled _Account mapping_, with
 Xero actions here already go by `status` (publish, the Xero cards' `is_live`, a supplier at Xero
 answers "reconnect"); Settings' `xero_connected` now does too (`bool(xero_org_id) and status !=
 'disconnected'`). Its kept accounts and mapping keep daily closing working.
+
+**A company that banks all its sales** (onboarding 4.2's "We bank all sales",
+`entities.uses_sales_cash = false`; owner's brief, 2026-11-10): its Cash method is off, so it never
+records cash sales and the publish's cash-sales step never runs. `xero_settings.missing_slots`
+leaves out the cash-sale account and contact (Setup Required, the dashboard and the publish gate),
+and Petty Cash Settings marks both `optional` in the mapping (`xero_cards._optional`) and saves
+without them, clearing them when empty. Adding Cash Sales back later is a Settings change still to
+come.

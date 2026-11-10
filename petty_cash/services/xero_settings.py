@@ -37,6 +37,16 @@ MINTY_SLOTS = (
 )
 
 
+#: The cash-sale choices, which a company banking all its sales doesn't need (owner's brief,
+#: 2026-11-10: its Cash method is off, so it never records cash sales to post).
+CASH_SALE_COLUMNS = ("cash_sale_account_id", "cash_sale_contact_id")
+
+
+def banks_all_sales(entity_id) -> bool:
+    """Onboarding's "We bank all sales" (``entities.uses_sales_cash = false``)."""
+    return Entity.objects.filter(id=entity_id, uses_sales_cash=False).exists()
+
+
 def minty_on_its_own(entity_id) -> bool:
     """The company keeps its books in Minty with no Xero organisation (``setup_mode = 'minty'``).
     Connected later, Xero's rules apply again."""
@@ -107,25 +117,28 @@ def contact_for_role(entity_id, role: str) -> XeroContactSync | None:
 def missing_slots(entity_id) -> list[str]:
     """Labels of the slots not mapped yet, in the dashboard's order."""
     row = _settings(entity_id)
+    skip = CASH_SALE_COLUMNS if banks_all_sales(entity_id) else ()
     if minty_on_its_own(entity_id):
-        chosen = {getattr(row, column, None) if row is not None else None for column, _ in MINTY_SLOTS} - {None}
+        slots = [(column, label) for column, label in MINTY_SLOTS if column not in skip]
+        chosen = {getattr(row, column, None) if row is not None else None for column, _ in slots} - {None}
         found = set(AccountInfo.objects.filter(id__in=chosen).values_list("id", flat=True))
-        return [label for column, label in MINTY_SLOTS
+        return [label for column, label in slots
                 if (getattr(row, column, None) if row is not None else None) not in found]
+    slots = [slot for slot in PETTYCASH_SLOTS if slot[0] not in skip]
     if row is None:
-        return [label for _, label, _ in PETTYCASH_SLOTS]
-    ids = {column: getattr(row, column) for column, _, _ in PETTYCASH_SLOTS}
+        return [label for _, label, _ in slots]
+    ids = {column: getattr(row, column) for column, _, _ in slots}
     accounts = set(
-        AccountInfo.objects.filter(id__in=[v for c, _, k in PETTYCASH_SLOTS if k == "account" and (v := ids[c])])
+        AccountInfo.objects.filter(id__in=[v for c, _, k in slots if k == "account" and (v := ids[c])])
         .values_list("id", flat=True)
     )
     contacts = set(
-        XeroContactSync.objects.filter(id__in=[v for c, _, k in PETTYCASH_SLOTS if k == "contact" and (v := ids[c])])
+        XeroContactSync.objects.filter(id__in=[v for c, _, k in slots if k == "contact" and (v := ids[c])])
         .values_list("id", flat=True)
     )
     return [
         label
-        for column, label, kind in PETTYCASH_SLOTS
+        for column, label, kind in slots
         if not ids[column] or ids[column] not in (accounts if kind == "account" else contacts)
     ]
 

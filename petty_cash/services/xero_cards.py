@@ -38,7 +38,7 @@ from minty_db.models import (
 from core.accounts_api import assertion_headers, service_assertion
 from core.xero_tokens import XeroTokenUnavailable, xero_token
 from petty_cash.services.publish import sync_connection_status
-from petty_cash.services.xero_settings import mask_account_number, minty_on_its_own
+from petty_cash.services.xero_settings import banks_all_sales, mask_account_number, minty_on_its_own
 
 logger = logging.getLogger("petty-cash-api")
 
@@ -227,12 +227,16 @@ def save_account_codes(entity: Entity, codes) -> str | None:
     return None
 
 
-def save_mapping(entity: Entity, values: dict) -> list[str]:
+def save_mapping(entity: Entity, values: dict, optional=()) -> list[str]:
     """Write the nine choices onto ``entity_pettycash_settings`` (in the caller's transaction). The
-    labels of choices that match no stored row, if any - nothing is written then."""
+    labels of choices that match no stored row, if any - nothing is written then. An ``optional``
+    field left empty is cleared."""
     resolved, unresolved = {}, []
     for key, label, kind, _listed, column in FIELDS:
         value = values.get(key)
+        if not value and key in optional:
+            resolved[column] = None
+            continue
         if kind == "contact":
             row = XeroContactSync.objects.filter(entity_id=entity.id, xero_contact_id=value).first()
         else:
@@ -253,6 +257,8 @@ def save_mapping(entity: Entity, values: dict) -> list[str]:
 #: The five accounts daily closing uses - the mapping's account fields, minus the discrepancy bank,
 #: which follows the petty cash account. No contact: contacts are Xero's.
 MINTY_KEYS = ("main_bank", "deposit_bank", "cashsale_account", "owners_account", "discrepancy_account")
+#: Optional for a company banking all its sales (``xero_settings.banks_all_sales``).
+CASH_SALE_KEYS = ("cashsale_account", "cashsale_contact")
 
 
 def _minty_options(entity_id) -> dict[str, list[dict]]:
@@ -287,7 +293,8 @@ def minty_save(entity: Entity, body: dict, may_edit: bool) -> tuple[dict, int]:
     """Write the five choices (and the discrepancy bank, which follows the petty cash account)."""
     values = {key: str(body.get(key) or "").strip() for key in MINTY_KEYS}
     labels = {key: label for key, label, *_ in FIELDS}
-    missing = [labels[key] for key in MINTY_KEYS if not values[key]]
+    optional = CASH_SALE_KEYS if banks_all_sales(entity.id) else ()
+    missing = [labels[key] for key in MINTY_KEYS if not values[key] and key not in optional]
     if missing:
         return {"error": " ".join(f"Choose the {label}." for label in missing)}, 422
     if values["main_bank"] == values["deposit_bank"]:
@@ -299,7 +306,7 @@ def minty_save(entity: Entity, body: dict, may_edit: bool) -> tuple[dict, int]:
         if key not in MINTY_KEYS:
             continue
         found = next((o["row"] for o in options[listed] if o["id"] == values[key]), None)
-        if found is None:
+        if found is None and not (key in optional and not values[key]):
             not_offered.append(label)
         resolved[column] = found
     if not_offered:
@@ -314,13 +321,21 @@ def minty_save(entity: Entity, body: dict, may_edit: bool) -> tuple[dict, int]:
 # ---- the answer ------------------------------------------------------------------------------
 
 
+def _optional(entity_id, mapping: list[dict] | None) -> list[dict] | None:
+    """Each field with ``optional``: the cash-sale pair is, for a company banking all its sales."""
+    if mapping is None:
+        return None
+    skip = CASH_SALE_KEYS if banks_all_sales(entity_id) else ()
+    return [{**field, "optional": field["key"] in skip} for field in mapping]
+
+
 def payload(entity: Entity, may_edit: bool) -> dict:
     if minty_on_its_own(entity.id):
         return {
             "live": False,
             "minty": True,
             "organisation": None,
-            "mapping": minty_read(entity.id),
+            "mapping": _optional(entity.id, minty_read(entity.id)),
             "mapping_saved": EntityPettycashSettings.objects.filter(entity_id=entity.id).exists(),
             "account_codes": account_codes(entity.id),
             "permissions": {"edit_mapping": may_edit, "edit_account_codes": may_edit},
@@ -331,7 +346,7 @@ def payload(entity: Entity, may_edit: bool) -> dict:
     return {
         "live": live,
         "organisation": entity.xero_tenant_name if live else None,
-        "mapping": read(entity.id) if live else None,
+        "mapping": _optional(entity.id, read(entity.id)) if live else None,
         "mapping_saved": EntityPettycashSettings.objects.filter(entity_id=entity.id).exists(),
         "account_codes": account_codes(entity.id) if live else None,
         "permissions": {"edit_mapping": may_edit, "edit_account_codes": may_edit},
@@ -372,7 +387,8 @@ def answer(entity_id, action: str, body, *, may_edit: bool) -> tuple[dict, int]:
 
     values = {key: str(body.get(key) or "").strip() for key in MAPPING_KEYS}
     labels = {key: label for key, label, *_ in FIELDS}
-    missing = [labels[key] for key in MAPPING_KEYS if not values[key]]
+    optional = CASH_SALE_KEYS if banks_all_sales(entity.id) else ()
+    missing = [labels[key] for key in MAPPING_KEYS if not values[key] and key not in optional]
     if missing:
         return {"error": " ".join(f"Choose the {label}." for label in missing)}, 422
     if values["main_bank"] == values["deposit_bank"]:
@@ -384,7 +400,7 @@ def answer(entity_id, action: str, body, *, may_edit: bool) -> tuple[dict, int]:
         return {"error": " ".join(f"Choose the {label} from the list." for label in not_offered)}, 422
     first_save = not EntityPettycashSettings.objects.filter(entity_id=entity.id).exists()
     with transaction.atomic():
-        unresolved = save_mapping(entity, values)
+        unresolved = save_mapping(entity, values, optional=optional)
     if unresolved:
         return {"error": "Some choices haven't synced from Xero yet: " + "; ".join(unresolved)
                          + ". Try again once the Xero sync has finished."}, 409
