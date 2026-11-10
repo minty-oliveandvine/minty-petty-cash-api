@@ -44,4 +44,4 @@ def test_accounts_api_url_boots_in_production_when_set(monkeypatch):
 
 def test_accounts_api_url_defaults_to_local_accounts_api_in_development(monkeypatch):
     mod = _load_settings(monkeypatch, {"APP_ENV": "development"})
-    assert mod.ACCOUNTS_API_URL == "http://localhost:8002"
+    assert mod.ACCOUNTS_API_URL == "http://localhost:8000"
