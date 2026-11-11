@@ -58,6 +58,18 @@ Every route is under `/api/petty-cash/v1/companies/{entity_id}`. The company com
 
 Each row's request, answer and refusals are Flask's, as its `docs/features/petty-cash-api.md` lists them; this table is updated as each router lands.
 
+## Sales groups (owner, 2026-11-11)
+
+How the pages group a company's sales methods follows its business type, as onboarding's step 5
+does (`services/sales.py::sales_groups`): `non_cash` for a retail shop, a service or a general
+business (one Non-cash list; its methods are stored as `electronic`), `electronic_delivery` for
+Restaurant & Food and for a company onboarding never asked (`business_type` NULL). It is sent as
+`groups` in `GET /reports/sales`, in the close read's and the Daily Report's `sales` (so the public
+share page has it too), and as `sales_groups` in `GET /settings`. The stored methods are unchanged:
+a Non-cash company that has delivery methods still gets them back, and the apps show them inside
+Non-cash. Tests: `test_sales.py::test_the_lists_follow_the_business_type`, and the payload tests in
+`test_close.py`, `test_report.py`, `test_public_share.py`, `test_settings.py`.
+
 ## Stale drafts (owner, 2026-10-26)
 
 A **stale draft** is a draft dated before the company's last submitted report

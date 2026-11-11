@@ -34,7 +34,12 @@ from petty_cash.services.reports import (
     find_draft,
     submitted_report_for,
 )
-from petty_cash.services.sales import CASH_VALUE_NAME, cash_sales_from_detail, page_methods
+from petty_cash.services.sales import (
+    CASH_VALUE_NAME,
+    cash_sales_from_detail,
+    page_methods,
+    sales_groups,
+)
 from petty_cash.services.submit import (
     ALREADY_SUBMITTED,
     SubmitRefused,
@@ -111,6 +116,7 @@ def close_page(request):
             "total": out(draft.total_sales),
             "yesterday_total": yesterday,
             "history": history,
+            "groups": sales_groups(entity_id),
         },
         "expenses": {
             "lines": [{"id": e["id"], "item": e["item"] or "", "supplier": e["contact_name"] or "",

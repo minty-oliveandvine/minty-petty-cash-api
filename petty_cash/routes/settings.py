@@ -28,6 +28,7 @@ from core.exceptions import Refused
 from core.policy import Permission, has_permission
 from petty_cash.routes._input import json_body
 from petty_cash.services import xero_cards
+from petty_cash.services.sales import sales_groups
 from petty_cash.services.settings import (
     TYPES,
     SettingsRefused,
@@ -86,6 +87,8 @@ def settings_payload(request) -> dict:
     return {
         "sales_methods": methods(entity_id) if may_view_sales else {t: [] for t in TYPES},
         "available": available(entity_id) if may_view_sales else {t: [] for t in TYPES},
+        # one Non-cash card, or Electronic and Delivery (owner, 2026-11-11)
+        "sales_groups": sales_groups(entity_id),
         # a disconnect keeps the organisation (Xero optional, 2026-11-10): the status says connected
         "xero_connected": bool(org.xero_org_id) and org.status != "disconnected",
         "permissions": {

@@ -82,7 +82,7 @@ def test_the_close_read_brings_the_day_as_submit_will_post_it(client, shop, note
     body = resp.json()
     assert body["draft"]["id"] == str(report.id) and body["currency_code"] == "HKD"
     assert (body["opening_balance"], body["cash_addition"]) == (100, 20)
-    assert body["sales"]["cash"] == 50
+    assert body["sales"]["cash"] == 50 and body["sales"]["groups"] == "electronic_delivery"
     assert body["sales"]["yesterday_total"] is None  # no report the day before
     assert len(body["sales"]["history"]) == 30 and body["sales"]["history"][-1]["date"] == D3.isoformat()
     assert body["expenses"]["total"] == 15

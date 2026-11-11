@@ -60,7 +60,7 @@ from petty_cash.services.report_edits import (
 )
 from petty_cash.services.report_page import cash_summary, report_facts, report_status
 from petty_cash.services.reports import currency_code, is_stale_draft
-from petty_cash.services.sales import cash_sales_from_detail, report_methods
+from petty_cash.services.sales import cash_sales_from_detail, report_methods, sales_groups
 from petty_cash.services.share import ShareRefused, create_share_link
 from petty_cash.services.xero_settings import minty_on_its_own
 
@@ -100,6 +100,7 @@ def report_figures(report: Report, entity_id) -> dict:
             "methods": [{**m, "amount": out(m["amount"])} for m in report_methods(entity_id, report.id)],
             "cash": out(cash_sales_from_detail(report)),
             "total": out(report.total_sales),
+            "groups": sales_groups(entity_id),
         },
         "cash": {
             "opening_balance": out(report.opening_balance),

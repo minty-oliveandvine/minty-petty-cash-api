@@ -9,6 +9,7 @@ from decimal import Decimal
 import pytest
 from minty_db.enums import EntityRole, SaleType
 from minty_db.models import (
+    Entity,
     EntitySaleSetting,
     Report,
     ReportHistory,
@@ -18,6 +19,7 @@ from minty_db.models import (
 )
 
 from petty_cash.days import today
+from petty_cash.services.sales import sales_groups
 from petty_cash.tests.conftest import headers, make_report, make_user, url
 
 pytestmark = pytest.mark.django_db
@@ -210,3 +212,20 @@ def test_bad_input_is_a_422(client, shop, methods, over, message):
     assert resp.status_code == 422
     assert message in resp.json()["error"]
     assert _amounts(draft) == {}
+
+
+# --- the groups (owner, 2026-11-11) --------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("business, groups", [
+    ("retail", "non_cash"), ("service", "non_cash"), ("general", "non_cash"),
+    ("fnb", "electronic_delivery"), (None, "electronic_delivery"),
+])
+def test_the_lists_follow_the_business_type(client, shop, methods, business, groups):
+    """Restaurant & Food (and a company from before onboarding asked) shows Electronic and Delivery;
+    a retail shop, a service or a general business shows one Non-cash list."""
+    Entity.objects.filter(id=shop.entity.id).update(business_type=business)
+    _draft(shop)
+
+    assert sales_groups(shop.entity.id) == groups
+    assert _get(client, shop).json()["groups"] == groups

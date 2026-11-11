@@ -102,7 +102,8 @@ def test_anyone_with_the_link_reads_the_day_and_nothing_more(shop, shared):
     assert (day["status"], day["status_label"], day["status_tone"]) == ("submitted", "Submitted", "info")
     assert day["submitted_by"] == "Olive Owner" and day["submitted_at"]
     assert day["kpis"] == {"total_sales": 0, "total_expenses": 15, "cash_position": 55}
-    assert set(day["sales"]) == {"methods", "cash", "total"}
+    assert set(day["sales"]) == {"methods", "cash", "total", "groups"}
+    assert day["sales"]["groups"] == "electronic_delivery"
     assert day["expenses"] == {
         "lines": [{"item": "Advertising", "supplier_name": None, "amount": 15, "receipts": [{"name": "lunch.jpg"}]}],
         "total": 15,

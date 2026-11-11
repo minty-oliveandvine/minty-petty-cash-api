@@ -65,7 +65,7 @@ def test_the_settings_read(client, shop, methods):
 
     assert resp.status_code == 200, resp.json()
     body = resp.json()
-    assert "country" not in body
+    assert "country" not in body and body["sales_groups"] == "electronic_delivery"
     assert names(body, "electronic") == ["Visa", "Alipay"] and names(body, "delivery") == ["Foodpanda"]
     assert {m["name"]: m["shared"] for m in body["sales_methods"]["electronic"]} == {"Visa": False, "Alipay": False}
     assert body["xero_connected"] is False and all(body["permissions"].values())

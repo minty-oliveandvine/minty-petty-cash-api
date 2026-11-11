@@ -76,6 +76,7 @@ def test_the_daily_report_brings_the_day_and_what_may_be_done(client, shop, note
     assert (body["status"], body["status_label"], body["status_tone"]) == ("submitted", "Submitted", "info")
     assert body["is_latest"] is True and body["was_published"] is False
     assert body["kpis"] == {"total_sales": 0, "total_expenses": 15, "cash_position": 55}
+    assert body["sales"]["groups"] == "electronic_delivery"
     assert body["expenses"]["total"] == 15 and body["expenses"]["lines"][0]["item"] == "Advertising"
     assert body["cash"]["expected"] == 55 and body["cash"]["counted"] == 55
     assert body["cash"]["difference"] == {"amount": 0, "kind": "none", "reason": ""}

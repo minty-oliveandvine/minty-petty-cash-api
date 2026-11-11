@@ -13,7 +13,7 @@ from decimal import Decimal
 
 from django.db import transaction
 from minty_db.enums import SaleType
-from minty_db.models import EntitySaleSetting, Report, ReportSale, SaleInfo
+from minty_db.models import Entity, EntitySaleSetting, Report, ReportSale, SaleInfo
 
 from petty_cash.money import cents
 from petty_cash.services.reports import log_history, update_draft_progress
@@ -23,6 +23,18 @@ CASH_VALUE_NAME = "cash_sales"
 
 #: A method the page lists but the save has always skipped (the old Deliveroo column).
 SKIPPED = "deliveroo_sales"
+
+#: Which lists the pages show (owner, 2026-11-11; onboarding's step 5 asks the same):
+#: Restaurant & Food takes Electronic and Delivery; a retail shop, a service or a general business
+#: takes one Non-cash list (its methods are stored as electronic). A company from before onboarding
+#: asked the business type keeps both.
+NON_CASH_BUSINESSES = ("retail", "service", "general")
+
+
+def sales_groups(entity_id) -> str:
+    """``non_cash`` or ``electronic_delivery`` - how the pages group the company's methods."""
+    business = Entity.objects.filter(id=entity_id).values_list("business_type", flat=True).first()
+    return "non_cash" if business in NON_CASH_BUSINESSES else "electronic_delivery"
 
 
 def sales_methods(entity_id) -> list[dict]:
