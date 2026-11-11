@@ -43,3 +43,12 @@ leaves out the cash-sale account and contact (Setup Required, the dashboard and 
 and Petty Cash Settings marks both `optional` in the mapping (`xero_cards._optional`) and saves
 without them, clearing them when empty. Adding Cash Sales back later is a Settings change still to
 come.
+
+## Connecting Xero later (Settings Phase 2, 2026-11-11)
+
+A Minty company that signs in to Xero is matched first (minty-accounts-api `xero/services/matching.py`):
+until Finish it keeps `setup_mode` `minty` with an organisation recorded, and publishing is refused
+before any Xero call ("Finish matching your accounts to Xero first (Settings, under Integration), then
+publish."). Finish sets `entities.xero_publish_from` to that day (owner: only records from then on go
+to Xero), so a report dated before it is refused ("This report is from before Xero was connected, so
+it stays in Minty."). NULL - every company connected from the start - is no cut-off.

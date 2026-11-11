@@ -221,3 +221,25 @@ def test_its_account_mapping_saves_without_a_cash_sale_account(client, minty):
     resp = client.put(url(minty.entity.id, "/settings/xero/mapping"), body, content_type="application/json",
                       headers=headers(minty.owner.id))
     assert resp.status_code == 422 and "Cash Sales account code" in resp.json()["error"]
+
+
+# ---- connecting Xero later (Settings Phase 2, 2026-11-11) ------------------------------------------
+
+
+def test_publishing_waits_while_the_accounts_are_being_matched(client, minty, monkeypatch):
+    """Signed in to Xero, matching not finished: the company is still Minty's, so nothing goes to Xero."""
+    monkeypatch.setattr(pub, "xero_token", lambda entity_id: (_ for _ in ()).throw(AssertionError("asked Xero")))
+    Entity.objects.filter(id=minty.entity.id).update(xero_org_id="org-1", status="disconnected")
+    report = make_report(minty.entity, dt.date(2026, 11, 2), created_by=minty.owner.id)
+    resp = client.post(url(minty.entity.id, f"/reports/{report.id}/publish"), headers=headers(minty.owner.id))
+    assert (resp.status_code, resp.json()) == (409, {"error": pub.STILL_MATCHING})
+
+
+def test_a_report_from_before_xero_was_connected_stays_in_minty(client, minty, monkeypatch):
+    """Finish sets xero_publish_from (owner: only records from then on go to Xero)."""
+    monkeypatch.setattr(pub, "xero_token", lambda entity_id: (_ for _ in ()).throw(AssertionError("asked Xero")))
+    Entity.objects.filter(id=minty.entity.id).update(setup_mode="xero", xero_org_id="org-1", status="connected",
+                                                     xero_publish_from=dt.date(2026, 11, 11))
+    report = make_report(minty.entity, dt.date(2026, 11, 10), created_by=minty.owner.id)
+    resp = client.post(url(minty.entity.id, f"/reports/{report.id}/publish"), headers=headers(minty.owner.id))
+    assert (resp.status_code, resp.json()) == (409, {"error": pub.BEFORE_XERO})

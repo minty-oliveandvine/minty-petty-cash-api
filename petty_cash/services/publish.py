@@ -64,6 +64,10 @@ NO_TOKEN_SERVICE = "I couldn't reach Xero to start the publish. Try again in a m
 INCOMPLETE = "Xero settings incomplete. Please configure entity settings first."
 #: A company keeping its books in Minty with no Xero organisation (Xero optional, 2026-11-10).
 NOT_IN_XERO = "This company keeps its books in Minty and isn't connected to Xero, so there's nowhere to publish to."
+#: Connecting Xero later (Settings Phase 2, 2026-11-11): signed in, the accounts not matched yet.
+STILL_MATCHING = ("Finish matching your accounts to Xero first (Settings, under Integration), then publish.")
+#: Finish set ``entities.xero_publish_from`` (owner: only records from then on go to Xero).
+BEFORE_XERO = "This report is from before Xero was connected, so it stays in Minty."
 CONNECTIONS_URL = "https://api.xero.com/connections"
 
 
@@ -109,6 +113,11 @@ def start_publish(entity_id, report: Report, person) -> dict:
     entity = Entity.objects.get(id=entity_id)
     if minty_on_its_own(entity_id):
         raise PublishRefused(NOT_IN_XERO, 409)
+    if entity.setup_mode == "minty":
+        # An organisation is recorded but the accounts aren't matched: still Minty's books.
+        raise PublishRefused(STILL_MATCHING, 409)
+    if entity.xero_publish_from and report.transaction_date and report.transaction_date < entity.xero_publish_from:
+        raise PublishRefused(BEFORE_XERO, 409)
     try:
         token = xero_token(entity_id)
     except XeroTokenUnavailable as unavailable:
