@@ -111,11 +111,11 @@ def start_publish(entity_id, report: Report, person) -> dict:
     """Start the publish of ``report`` (this company's, viewable, ``REPORT_PUBLISH`` - checked by the
     route). The 202 answer; raises ``PublishRefused``."""
     entity = Entity.objects.get(id=entity_id)
-    if minty_on_its_own(entity_id):
-        raise PublishRefused(NOT_IN_XERO, 409)
-    if entity.setup_mode == "minty":
+    if entity.setup_mode == "minty" and entity.xero_org_id:
         # An organisation is recorded but the accounts aren't matched: still Minty's books.
         raise PublishRefused(STILL_MATCHING, 409)
+    if minty_on_its_own(entity_id):
+        raise PublishRefused(NOT_IN_XERO, 409)
     if entity.xero_publish_from and report.transaction_date and report.transaction_date < entity.xero_publish_from:
         raise PublishRefused(BEFORE_XERO, 409)
     try:

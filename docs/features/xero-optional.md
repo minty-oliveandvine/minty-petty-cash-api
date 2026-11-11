@@ -52,3 +52,10 @@ before any Xero call ("Finish matching your accounts to Xero first (Settings, un
 publish."). Finish sets `entities.xero_publish_from` to that day (owner: only records from then on go
 to Xero), so a report dated before it is refused ("This report is from before Xero was connected, so
 it stays in Minty."). NULL - every company connected from the start - is no cut-off.
+
+**Minty's books until Finish (2026-11-11).** `minty_on_its_own` is `setup_mode = 'minty'` alone: an
+organisation recorded mid-matching no longer makes the company a Xero company here (it did, and
+Petty Cash Settings drew empty Xero pickers while the company was wrongly marked connected).
+Matching's Finish sets `setup_mode = 'xero'`.
+An archived account is no account code to offer or tick (`xero_cards.account_codes` / its save):
+one onboarding archived and re-added under the same code was listed twice.

@@ -100,7 +100,9 @@ def test_the_rule_reads_setup_mode_and_the_org(shop):
     Entity.objects.filter(id=shop.entity.id).update(setup_mode="minty")
     assert suppliers.minty_on_its_own(shop.entity.id)
     Entity.objects.filter(id=shop.entity.id).update(xero_org_id="org-1")
-    assert not suppliers.minty_on_its_own(shop.entity.id), "connected later: Xero's rules again"
+    assert suppliers.minty_on_its_own(shop.entity.id), "an org recorded mid-matching: still Minty's (2026-11-11)"
+    Entity.objects.filter(id=shop.entity.id).update(setup_mode="xero")
+    assert not suppliers.minty_on_its_own(shop.entity.id), "Finish hands it to Xero's rules"
 
 
 # ---- Petty Cash Settings' mapping card, for such a company --------------------------------------
@@ -243,3 +245,26 @@ def test_a_report_from_before_xero_was_connected_stays_in_minty(client, minty, m
     report = make_report(minty.entity, dt.date(2026, 11, 10), created_by=minty.owner.id)
     resp = client.post(url(minty.entity.id, f"/reports/{report.id}/publish"), headers=headers(minty.owner.id))
     assert (resp.status_code, resp.json()) == (409, {"error": pub.BEFORE_XERO})
+
+
+def test_an_archived_account_is_no_code_to_offer(client, minty):
+    """Onboarding archives a used account it removes; one added back under the same code was listed
+    twice (and the save ticked both). Only the live one is a code."""
+    from minty_db.models import EntityAccountXero
+
+    old = _account(minty.entity, "6900", "Cash Over / Short", "EXPENSE", "expense")
+    AccountInfo.objects.filter(id=old.id).update(status="ARCHIVED", record_status="archived")
+    live = _account(minty.entity, "6900", "Cash Over / Short", "EXPENSE", "expense")
+    for row in (old, live):
+        EntityAccountXero.objects.create(account_id=row.id, name=row.name, type=row.type, is_active=False)
+    _five(minty.entity)
+
+    codes = _settings(client, minty).json()["account_codes"]
+    assert [c["code"] for c in codes].count("6900") == 1
+
+    resp = client.put(url(minty.entity.id, "/settings/xero/account-codes"), {"codes": ["6900"]},
+                      content_type="application/json", headers=headers(minty.owner.id))
+    assert resp.status_code == 200, resp.content
+    ticked = dict(EntityAccountXero.objects.filter(account_id__in=[old.id, live.id]).values_list("account_id",
+                                                                                                "is_active"))
+    assert ticked == {old.id: False, live.id: True}

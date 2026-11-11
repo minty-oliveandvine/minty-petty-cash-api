@@ -48,10 +48,10 @@ def banks_all_sales(entity_id) -> bool:
 
 
 def minty_on_its_own(entity_id) -> bool:
-    """The company keeps its books in Minty with no Xero organisation (``setup_mode = 'minty'``).
-    Connected later, Xero's rules apply again."""
-    row = Entity.objects.filter(id=entity_id).values_list("setup_mode", "xero_org_id").first()
-    return row is not None and row[0] == "minty" and not row[1]
+    """The company keeps its books in Minty (``setup_mode = 'minty'``). Until its accounts are matched
+    to Xero, it stays Minty's - an organisation recorded mid-matching (Settings Phase 2, 2026-11-11)
+    changes nothing; matching's Finish sets ``setup_mode = 'xero'`` and Xero's rules apply."""
+    return Entity.objects.filter(id=entity_id, setup_mode="minty").exists()
 
 
 _ROLE_COLUMN = {

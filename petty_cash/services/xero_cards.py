@@ -188,6 +188,7 @@ def account_codes(entity_id) -> list[dict]:
     ``entity_account_xero.is_active``: the codes an expense line may use)."""
     rows = (EntityAccountXero.objects.select_related("account")
             .filter(account__entity_id=entity_id, account__type__in=COA_INCLUDED_TYPES)
+            .exclude(account__status="ARCHIVED").exclude(account__record_status="archived")
             .order_by("account__xero_code"))
     return [{"code": r.account.xero_code or "", "name": html.unescape(r.account.name or ""), "selected": bool(r.is_active)}
             for r in rows]
@@ -200,14 +201,16 @@ def save_account_codes(entity: Entity, codes) -> str | None:
     """Tick exactly ``codes``; the refusal, or None. At least one of the company's listed codes
     stays ticked, unless it has none at all."""
     listed = EntityAccountXero.objects.filter(account__entity_id=entity.id).values("account_id")
-    saveable = {str(c).strip() for c in AccountInfo.objects.filter(
+    live = AccountInfo.objects.exclude(status="ARCHIVED").exclude(record_status="archived")
+    saveable = {str(c).strip() for c in live.filter(
         entity_id=entity.id, type__in=COA_INCLUDED_TYPES, id__in=listed,
     ).values_list("xero_code", flat=True) if c and str(c).strip()}
     wanted = {str(c).strip() for c in codes or [] if c and str(c).strip()}
     if saveable and not wanted & saveable:
         return "Pick at least one account code."
     with transaction.atomic():
-        eligible = list(AccountInfo.objects.filter(entity_id=entity.id, type__in=COA_INCLUDED_TYPES))
+        # An archived account is no code to offer or tick (one re-added under its code was listed twice).
+        eligible = list(live.filter(entity_id=entity.id, type__in=COA_INCLUDED_TYPES))
         selected = {a.id for a in eligible if a.xero_code and a.xero_code.strip() in wanted}
         existing = {e.account_id: e for e in EntityAccountXero.objects.filter(account__entity_id=entity.id)}
         by_id = {a.id: a for a in eligible}
