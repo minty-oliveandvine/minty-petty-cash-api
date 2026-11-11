@@ -7,7 +7,7 @@ from __future__ import annotations
 import pytest
 from minty_db.enums import EntityRole, EntityStatus, SystemRole
 
-from petty_cash.tests.conftest import WEB, headers, make_entity, make_user, url
+from petty_cash.tests.conftest import HUB, WEB, headers, make_entity, make_user, url
 
 pytestmark = pytest.mark.django_db
 
@@ -169,6 +169,14 @@ def test_the_preflight_is_answered_for_the_app_without_a_token(client, shop):
     assert resp.status_code == 200
     assert resp["Access-Control-Allow-Origin"] == WEB
     assert "PUT" in resp["Access-Control-Allow-Methods"]
+
+
+def test_the_hub_gets_cors_too(client, shop):
+    # Petty Cash Settings lives in minty-web since 2026-11-10 (owner).
+    resp = client.get(url(shop.entity.id), headers={**headers(shop.owner.id), "Origin": HUB})
+
+    assert resp.status_code == 200
+    assert resp["Access-Control-Allow-Origin"] == HUB
 
 
 def test_another_origin_gets_no_cors(client, shop):

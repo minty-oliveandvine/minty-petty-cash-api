@@ -41,6 +41,7 @@ LOGGING["handlers"]["file_api"] = {"class": "logging.NullHandler"}  # noqa: F405
 # machine ran it, and no test may reach a real Flask or bucket.
 ACCOUNTS_API_URL = "http://flask.invalid"
 PETTY_CASH_WEB_URL = "http://localhost:3010"
-CORS_ALLOWED_ORIGINS = [PETTY_CASH_WEB_URL]
+MINTY_WEB_URL = "http://localhost:3000"
+CORS_ALLOWED_ORIGINS = [PETTY_CASH_WEB_URL, MINTY_WEB_URL]
 S3 = {"endpoint_url": "http://s3.invalid", "bucket": "test-receipts", "key": "k", "secret": "s",
       "region": "us-east-1"}

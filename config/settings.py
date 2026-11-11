@@ -72,14 +72,16 @@ XERO_API_BASE_URL = (os.environ.get("XERO_API_BASE_URL") or "https://api.xero.co
 XERO_TOKEN_TIMEOUT = 15
 
 # ---------------------------------------------------------------------------
-# CORS - one browser app calls this API: minty-petty-cash-web (``PETTY_CASH_WEB_URL``), plus a
-# branch's preview set (``PREVIEW_ORIGIN_REGEX``). Flask's ``petty_cash_api/api.py`` stamps the
-# same origins; ``x-entity-id`` is NOT advertised - the company is the URL's, never a header's.
+# CORS - two browser apps call this API: minty-petty-cash-web (``PETTY_CASH_WEB_URL``) and
+# minty-web (``MINTY_WEB_URL``), which holds Petty Cash Settings since 2026-11-10 (owner), plus a
+# branch's preview set (``PREVIEW_ORIGIN_REGEX``). ``CORS_ALLOWED_ORIGINS`` replaces the default.
+# ``x-entity-id`` is NOT advertised - the company is the URL's, never a header's.
 # ---------------------------------------------------------------------------
 PETTY_CASH_WEB_URL = (os.environ.get("PETTY_CASH_WEB_URL") or "http://localhost:3010").rstrip("/")
+MINTY_WEB_URL = (os.environ.get("MINTY_WEB_URL") or "http://localhost:3000").rstrip("/")
 CORS_ALLOWED_ORIGINS = [
     origin.strip().rstrip("/")
-    for origin in (os.environ.get("CORS_ALLOWED_ORIGINS") or PETTY_CASH_WEB_URL).split(",")
+    for origin in (os.environ.get("CORS_ALLOWED_ORIGINS") or f"{PETTY_CASH_WEB_URL},{MINTY_WEB_URL}").split(",")
     if origin.strip()
 ]
 CORS_ALLOWED_ORIGIN_REGEXES = preview_origin_regexes(os.environ.get("PREVIEW_ORIGIN_REGEX"))

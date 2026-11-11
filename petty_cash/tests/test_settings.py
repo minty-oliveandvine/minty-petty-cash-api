@@ -2,7 +2,7 @@
 ``tests/test_petty_cash_api_settings.py`` expectations, restated, plus what Flask's suite doesn't
 pin: the name limits the schema allows (a deliberate difference - Flask's 100-character check let a
 75-100 character name through to a database error) and the rename refusals. The country and currency
-are not set here: minty-web's Entity & Integration tab is their one place."""
+are not set here: minty-web's General tab is their one place."""
 
 from __future__ import annotations
 

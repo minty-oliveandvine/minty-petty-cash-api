@@ -181,7 +181,7 @@ def test_no_report_starts_before_the_company_has_a_currency(client, shop):
 
     assert resp.status_code == 409
     assert resp.json() == {
-        "error": "No currency is selected for this company. Choose one in Entity & Integration to start a report.",
+        "error": "No currency is selected for this company. Choose one in Settings, under General, to start a report.",
         "to": "dashboard",
     }
     assert _row(shop, D3) is None

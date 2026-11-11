@@ -1,6 +1,6 @@
 """Petty Cash settings without Xero - the Electronic / Delivery sales methods - ported from Flask's
 ``entity/services/payment_methods.py``. The country and currency are not set here: they belong to
-minty-web's Entity & Integration tab (Flask's ``PATCH /api/me/company/integration``).
+minty-web's General tab (Flask's ``PATCH /api/me/company/integration``).
 
 A company's methods are links (``entity_sale_setting``: on/off, order) into one catalogue
 (``sale_info``) every company shares: a method nobody has yet adds a catalogue row for everyone, and

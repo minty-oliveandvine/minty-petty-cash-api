@@ -1,6 +1,6 @@
 """Petty Cash settings - Flask's ``petty_cash_api/routes/settings.py``: the Electronic / Delivery
 sales methods here; the Xero cards forwarded to Flask. The country and currency are not set here
-(owner, 2026-11-03): minty-web's Entity & Integration tab is their one place.
+(owner, 2026-11-03): minty-web's General tab is their one place (2026-11-10).
 
 - ``GET /settings``: the two method lists, the catalogue methods not on them, whether Xero is
   connected, and what this person may change.

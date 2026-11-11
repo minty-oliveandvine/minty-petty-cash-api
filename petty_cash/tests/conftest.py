@@ -28,6 +28,8 @@ from minty_db.models import (
 )
 
 WEB = "http://localhost:3010"
+#: minty-web, which holds Petty Cash Settings since 2026-11-10.
+HUB = "http://localhost:3000"
 
 
 def mint(user_id, *, module="billing", secret=None, expires_in=1800, **claims) -> str:
