@@ -8,6 +8,7 @@ No network: the model client is a stand-in - a test that reached Google would te
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -166,7 +167,9 @@ def test_one_log_line_with_numbers_and_never_the_values(client, shop, model, cap
 
     [line] = [r.getMessage() for r in caplog.records if "expense_ai: extract" in r.getMessage()]
     assert f"entity={shop.entity.id}" in line and "tokens_in=5000" in line and "status=ok" in line
-    assert "ABC Supplies" not in line and "120" not in line and "Flyers" not in line
+    # the ids are random: one holding "120" once failed CI (2026-11-11), so they go before the check
+    bare = re.sub(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", "<id>", line)
+    assert "ABC Supplies" not in bare and "120" not in bare and "Flyers" not in bare
 
 
 @pytest.mark.parametrize("receipt, message", [
