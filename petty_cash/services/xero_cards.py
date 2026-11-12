@@ -45,7 +45,6 @@ logger = logging.getLogger("petty-cash-api")
 SYNC_SCOPE = "xero-sync"
 #: Two Xero fetches (accounts, then every page of contacts) behind accounts-api.
 SYNC_TIMEOUT = (5, 60)
-NOT_LIVE = "Xero isn't connected for this company. Connect it in the company's settings first."
 UNREACHABLE = "I couldn't reach Xero's settings just now. Try again in a moment."
 MAPPING_KEYS = ("main_bank", "deposit_bank", "cashsale_account", "cashsale_contact", "owners_account",
                 "owners_contact", "discrepancy_account", "discrepancy_contact")
@@ -317,7 +316,7 @@ def minty_save(entity: Entity, body: dict, may_edit: bool) -> tuple[dict, int]:
     resolved["discrepancy_bank_account_id"] = resolved["pettycash_account_id"]
     first_save = not EntityPettycashSettings.objects.filter(entity_id=entity.id).exists()
     EntityPettycashSettings.objects.update_or_create(entity_id=entity.id, defaults=resolved)
-    logger.info("Account mapping saved for company %s (Minty on its own)", entity.id)
+    logger.info("Account mapping saved for company %s (its own five accounts, no Xero)", entity.id)
     return {**payload(entity, may_edit), "message": "Account mapping saved.", "first_save": first_save}, 200
 
 
@@ -349,9 +348,12 @@ def payload(entity: Entity, may_edit: bool) -> dict:
     return {
         "live": live,
         "organisation": entity.xero_tenant_name if live else None,
-        "mapping": _optional(entity.id, read(entity.id)) if live else None,
+        # without Xero the five accounts are still chosen, from the stored chart; the Xero contacts
+        # wait for Xero (owner, 2026-11-12)
+        "mapping": _optional(entity.id, read(entity.id) if live else minty_read(entity.id)),
         "mapping_saved": EntityPettycashSettings.objects.filter(entity_id=entity.id).exists(),
-        "account_codes": account_codes(entity.id) if live else None,
+        # the codes are the company's stored accounts, ticked here: no Xero needed (owner, 2026-11-12)
+        "account_codes": account_codes(entity.id),
         "permissions": {"edit_mapping": may_edit, "edit_account_codes": may_edit},
     }
 
@@ -370,23 +372,24 @@ def answer(entity_id, action: str, body, *, may_edit: bool) -> tuple[dict, int]:
         if problem:
             return {"error": problem}, 422
         return {**payload(entity, may_edit), "message": "Account codes saved."}, 200
+    body = body if isinstance(body, dict) else {}
     try:
         if action == "read":
             return payload(entity, may_edit), 200
+        if action == "account-codes":
+            # ticking the stored accounts needs no Xero, connected or not (owner, 2026-11-12)
+            codes = body.get("codes")
+            if not isinstance(codes, list) or not all(isinstance(c, str) for c in codes):
+                return {"error": "Send the ticked account codes as a list."}, 422
+            problem = save_account_codes(entity, codes)
+            if problem:
+                return {"error": problem}, 422
+            return {**payload(entity, may_edit), "message": "Account codes saved."}, 200
         if not is_live(entity):
-            return {"error": NOT_LIVE}, 409
+            # the five accounts save without Xero; the contacts are left as they are
+            return minty_save(entity, body, may_edit)
     except XeroUnreachable:
         return {"error": UNREACHABLE}, 503
-    body = body if isinstance(body, dict) else {}
-
-    if action == "account-codes":
-        codes = body.get("codes")
-        if not isinstance(codes, list) or not all(isinstance(c, str) for c in codes):
-            return {"error": "Send the ticked account codes as a list."}, 422
-        problem = save_account_codes(entity, codes)
-        if problem:
-            return {"error": problem}, 422
-        return {**payload(entity, may_edit), "message": "Account codes saved."}, 200
 
     values = {key: str(body.get(key) or "").strip() for key in MAPPING_KEYS}
     labels = {key: label for key, label, *_ in FIELDS}
@@ -407,4 +410,4 @@ def answer(entity_id, action: str, body, *, may_edit: bool) -> tuple[dict, int]:
     if unresolved:
         return {"error": "Some choices haven't synced from Xero yet: " + "; ".join(unresolved)
                          + ". Try again once the Xero sync has finished."}, 409
-    return {**payload(entity, may_edit), "message": "Xero account mapping saved.", "first_save": first_save}, 200
+    return {**payload(entity, may_edit), "message": "Account mapping saved.", "first_save": first_save}, 200

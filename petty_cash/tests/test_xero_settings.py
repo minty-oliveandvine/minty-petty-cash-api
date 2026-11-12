@@ -122,15 +122,35 @@ def test_the_cards_read_the_lists_once_the_connection_is_live(client, lists, xer
     assert body["permissions"] == {"edit_mapping": True, "edit_account_codes": True}
 
 
-def test_without_a_live_connection_the_cards_say_so_and_refuse_a_save(client, lists, xero):
+def test_without_a_live_connection_the_accounts_and_codes_stay_and_the_contacts_wait(client, lists, xero):
+    """Owner, 2026-11-12: without Xero the card still shows - the five accounts from the company's
+    stored chart and the account codes, both saved here; only the Xero contacts wait for Xero."""
     xero.listed = False  # revoked on Xero's side: the token still works
 
     body = call(client, lists, "get", "/settings/xero").json()
-    assert (body["live"], body["mapping"], body["account_codes"]) == (False, None, None) and xero.syncs == []
+    assert body["live"] is False and xero.syncs == []
+    assert [f["key"] for f in body["mapping"]] == [
+        "main_bank", "deposit_bank", "cashsale_account", "owners_account", "discrepancy_account"]
+    assert {o["id"] for o in _field(body, "main_bank")["options"]} >= {"acc-pc", "acc-dep"}
+    assert body["account_codes"] == [{"code": "400", "name": "Advertising", "selected": True},
+                                     {"code": "404", "name": "Bank Fees", "selected": False}]
     assert Entity.objects.get(id=lists.entity.id).status == "disconnected"
-    assert call(client, lists, "put", "/settings/xero/mapping", MAPPING).status_code == 409
-    assert call(client, lists, "put", "/settings/xero/account-codes", {"codes": ["400"]}).json() == {
-        "error": xero_cards.NOT_LIVE}
+
+    # the five accounts save without Xero; the contacts sent are ignored, never cleared
+    saved = call(client, lists, "put", "/settings/xero/mapping", MAPPING)
+    assert saved.status_code == 200, saved.json()
+    assert saved.json()["message"] == "Account mapping saved."
+    row = EntityPettycashSettings.objects.get(entity_id=lists.entity.id)
+    assert row.pettycash_account_id == AccountInfo.objects.get(xero_account_id="acc-pc").id
+    assert row.discrepancy_bank_account_id == row.pettycash_account_id
+    assert _field(saved.json(), "main_bank")["selected"] == "acc-pc"
+
+    resp = call(client, lists, "put", "/settings/xero/account-codes", {"codes": ["404"]})
+    assert resp.status_code == 200, resp.json()
+    assert resp.json()["message"] == "Account codes saved." and resp.json()["live"] is False
+    assert resp.json()["account_codes"] == [{"code": "400", "name": "Advertising", "selected": False},
+                                            {"code": "404", "name": "Bank Fees", "selected": True}]
+    assert xero.syncs == [], "Xero is never asked"
 
 
 def test_the_mapping_is_saved_and_read_back(client, lists, xero):
@@ -138,7 +158,7 @@ def test_the_mapping_is_saved_and_read_back(client, lists, xero):
 
     assert resp.status_code == 200, resp.json()
     body = resp.json()
-    assert (body["message"], body["first_save"], body["mapping_saved"]) == ("Xero account mapping saved.", True, True)
+    assert (body["message"], body["first_save"], body["mapping_saved"]) == ("Account mapping saved.", True, True)
     assert _field(body, "deposit_bank")["selected"] == "acc-dep" and _field(body, "owners_contact")["selected"] == "con-1"
     saved = EntityPettycashSettings.objects.get(entity_id=lists.entity.id)
     assert saved.discrepancy_bank_account_id == saved.pettycash_account_id  # it mirrors the Petty Cash Account
@@ -216,6 +236,7 @@ def test_the_token_service_unreachable_is_a_503_not_not_connected(client, lists,
 def test_a_company_never_connected_is_not_live_and_xero_is_never_asked(client, shop, xero):
     body = call(client, shop, "get", "/settings/xero").json()
     assert body["live"] is False and xero.syncs == []
+    assert body["account_codes"] == [], "no stored accounts yet: nothing to tick"
 
 
 # ---- what a save writes ----------------------------------------------------------------------
