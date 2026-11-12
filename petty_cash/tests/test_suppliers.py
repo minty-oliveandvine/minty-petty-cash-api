@@ -134,23 +134,49 @@ def test_a_contact_without_an_id_is_said(client, connected, http):
     assert _synced(connected) == {}
 
 
-def test_a_company_without_xero_cannot_add_one(client, shop, http):
+def test_a_company_without_xero_adds_its_own_supplier(client, shop, http):
+    """Contacts are never blocked behind Xero (owner, 2026-11-12): the company's own row, no Xero id;
+    the next live sync puts it in Xero."""
     resp = _post(client, shop, {"name": "Corner Bakery"})
 
-    assert resp.status_code == 409
-    assert resp.json()["error"] == "This entity isn't connected to Xero yet. Could you ask an admin to connect it?"
+    assert resp.status_code == 201, resp.json()
+    row = XeroContactSync.objects.get(entity_id=shop.entity.id)
+    assert (row.name, row.xero_contact_id, row.source) == ("Corner Bakery", None, "user")
     assert http.sent == []
 
 
-def test_a_disconnected_company_keeping_its_organisation_is_asked_to_reconnect(client, connected, http):
-    """A disconnect keeps the organisation (2026-11-10): no token is asked for, the answer is at once."""
+def test_a_disconnected_company_keeping_its_organisation_adds_its_own_too(client, connected, http):
+    """A disconnect keeps the organisation (2026-11-10): no token is asked for, Xero waits."""
     Entity.objects.filter(id=connected.entity.id).update(status="disconnected")
 
     resp = _post(client, connected, {"name": "Corner Bakery"})
 
-    assert resp.status_code == 409
-    assert resp.json()["error"] == "Xero wouldn't let me in. Could you ask an admin to reconnect it?"
+    assert resp.status_code == 201
+    assert XeroContactSync.objects.get(entity_id=connected.entity.id).xero_contact_id is None
     assert http.sent == []
+
+
+def test_a_name_the_company_has_is_that_supplier_never_a_second(client, connected, http):
+    own = XeroContactSync.objects.create(entity_id=connected.entity.id, name="Corner  Bakery", source="user")
+
+    resp = _post(client, connected, {"name": "corner bakery"})
+
+    assert resp.status_code == 201 and resp.json()["id"] == str(own.id)
+    assert XeroContactSync.objects.filter(entity_id=connected.entity.id).count() == 1
+    assert http.sent == []
+
+
+def test_a_live_company_links_to_xeros_contact_of_that_name_before_making_one(client, connected, http):
+    from minty_db.models import XeroContact
+
+    XeroContact.objects.create(entity_id=connected.entity.id, xero_org_id=ORG, xero_guid="con-kept",
+                               name="Corner Bakery", status="ACTIVE")
+
+    resp = _post(client, connected, {"name": "CORNER BAKERY"})
+
+    assert resp.status_code == 201
+    assert _synced(connected) == {"con-kept": "CORNER BAKERY"}
+    assert http.sent == []  # nothing asked of Xero: no duplicate there
 
 
 def test_a_connection_needing_a_reconnect_is_said(client, connected, http):
@@ -218,3 +244,47 @@ def test_a_sync_storing_the_same_contact_first_is_not_an_error(client, connected
     assert resp.json() == {"id": "con-new", "name": "Corner Bakery"}
     monkeypatch.undo()
     assert _synced(connected) == {"con-new": "Corner Bakery"}
+
+
+# ---- a deleted supplier added again is that one, brought back (owner, 2026-11-12) ---------------------
+
+
+def _archived(shop, name, xero_id=None):
+    return XeroContactSync.objects.create(entity_id=shop.entity.id, name=name, xero_contact_id=xero_id,
+                                          xero_org_id=ORG if xero_id else None, record_status="archived")
+
+
+def test_a_deleted_supplier_in_xero_comes_back_active_there(client, connected, http):
+    gone = _archived(connected, "Corner Bakery", "con-old")
+
+    resp = _post(client, connected, {"name": "corner bakery"})
+
+    assert resp.status_code == 201 and resp.json()["id"] == "con-old"
+    assert XeroContactSync.objects.get(id=gone.id).record_status == "active"
+    xero = [s for s in http.sent if s["url"] == CONTACTS_URL]
+    assert [s["json"] for s in xero] == [{"Contacts": [{"ContactID": "con-old", "ContactStatus": "ACTIVE"}]}]
+
+
+def test_xeros_archived_contact_of_that_name_is_linked_again_never_a_twin(client, connected, http):
+    from minty_db.models import XeroContact
+
+    XeroContact.objects.create(entity_id=connected.entity.id, xero_org_id=ORG, xero_guid="con-old",
+                               name="Corner Bakery", status="ARCHIVED")
+
+    resp = _post(client, connected, {"name": "Corner Bakery"})
+
+    assert resp.status_code == 201 and resp.json()["id"] == "con-old"
+    xero = [s["json"] for s in http.sent if s["url"] == CONTACTS_URL]
+    assert xero == [{"Contacts": [{"ContactID": "con-old", "ContactStatus": "ACTIVE"}]}]
+    assert XeroContact.objects.get(xero_guid="con-old").status == "ACTIVE"
+
+
+def test_offline_a_minty_only_supplier_comes_back_but_one_in_xero_waits(client, shop, http):
+    own = _archived(shop, "Corner Bakery")
+    _archived(shop, "Sam's Fish", "con-sam")
+
+    back = _post(client, shop, {"name": "Corner Bakery"})
+    assert back.status_code == 201 and back.json()["id"] == str(own.id)
+    waits = _post(client, shop, {"name": "Sam's Fish"})
+    assert waits.status_code == 409 and "reconnect Xero to bring it back" in waits.json()["error"]
+    assert http.sent == []

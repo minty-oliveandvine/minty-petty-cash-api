@@ -12,6 +12,8 @@ from minty_db.models import (
     CountryInfo,
     Entity,
     EntitySaleSetting,
+    Report,
+    ReportSale,
     SaleInfo,
     UserEntity,
 )
@@ -21,14 +23,16 @@ from petty_cash.tests.conftest import headers, make_currency, make_entity, make_
 pytestmark = pytest.mark.django_db
 
 
-def seed_methods(entity, *, electronic=("Visa", "Alipay"), delivery=("Foodpanda",)) -> dict:
-    """As Flask's ``replace_sales_methods`` writes them: a catalogue row per name (shared), a link
-    per company ordered 1..n within its type. name -> sale id."""
+def seed_methods(entity, *, electronic=("Visa", "Alipay"), delivery=("Foodpanda",), own=("Alipay",)) -> dict:
+    """A link per company ordered 1..n within its type. A name in ``own`` is the company's own row
+    (``sale_info.entity_id``, minty-db v0.7); the rest are Minty's catalogue. name -> sale id."""
     ids = {}
     for kind, names in ((SaleType.ELECTRONIC, electronic), (SaleType.DELIVERY, delivery)):
         for order, name in enumerate(names, start=1):
-            sale = SaleInfo.objects.filter(sale_name=name).first() or SaleInfo.objects.create(
-                sale_name=name, type=kind, value_name=name.lower().replace(" ", "_") + "_sales", enabled=True)
+            owner = entity.id if name in own else None
+            sale = SaleInfo.objects.filter(sale_name=name, entity_id=owner).first() or SaleInfo.objects.create(
+                sale_name=name, type=kind, value_name=name.lower().replace(" ", "_") + "_sales", enabled=True,
+                entity_id=owner)
             EntitySaleSetting.objects.create(entity_id=entity.id, sale_id=sale.id, is_active=True, display_order=order)
             ids[name] = str(sale.id)
     return ids
@@ -67,7 +71,8 @@ def test_the_settings_read(client, shop, methods):
     body = resp.json()
     assert "country" not in body and body["sales_groups"] == "electronic_delivery"
     assert names(body, "electronic") == ["Visa", "Alipay"] and names(body, "delivery") == ["Foodpanda"]
-    assert {m["name"]: m["shared"] for m in body["sales_methods"]["electronic"]} == {"Visa": False, "Alipay": False}
+    # owner, 2026-11-12: the company edits and deletes only its own; Minty's only come off its list
+    assert {m["name"]: m["own"] for m in body["sales_methods"]["electronic"]} == {"Visa": False, "Alipay": True}
     assert body["xero_connected"] is False and all(body["permissions"].values())
     assert "edit_xero" in body["permissions"] and "edit_country" not in body["permissions"]
 
@@ -82,12 +87,17 @@ def test_a_kept_organisation_is_not_a_connection(client, shop, methods, status, 
     assert call(client, shop, "get", "/settings").json()["xero_connected"] is connected
 
 
-def test_a_method_another_company_uses_is_marked_shared(client, shop, methods):
-    seed_methods(make_entity(shop.owner, name="Other Co"), electronic=("Visa",), delivery=())
+def test_another_companys_own_method_is_never_offered(client, shop, methods):
+    other = make_entity(shop.owner, name="Other Co")
+    seed_methods(other, electronic=("Kpay",), delivery=(), own=("Kpay",))
+    SaleInfo.objects.create(sale_name="Octopus", type=SaleType.ELECTRONIC, value_name="octopus_sales")
 
-    body = call(client, shop, "get", "/settings").json()
+    offered = [m["name"] for m in call(client, shop, "get", "/settings").json()["available"]["electronic"]]
 
-    assert {m["name"]: m["shared"] for m in body["sales_methods"]["electronic"]} == {"Visa": True, "Alipay": False}
+    assert "Octopus" in offered and "Kpay" not in offered
+    kpay = SaleInfo.objects.get(sale_name="Kpay")
+    resp = call(client, shop, "post", "/sales-methods", {"type": "electronic", "sale_info_id": str(kpay.id)})
+    assert resp.status_code == 422
 
 
 def test_cash_is_never_listed(client, shop, methods):
@@ -142,7 +152,22 @@ def test_adding_a_method_from_the_catalogue_or_by_name(client, shop, methods):
     typed = call(client, shop, "post", "/sales-methods", {"type": "delivery", "name": " Keeta "})
     assert typed.status_code == 201 and names(typed.json(), "delivery") == ["Foodpanda", "Keeta"]
     keeta = SaleInfo.objects.get(sale_name="Keeta")
-    assert (keeta.type, keeta.value_name) == ("delivery", "keeta_sales")
+    # a typed name is the company's own, never a new Minty method
+    assert (keeta.type, keeta.value_name, keeta.entity_id) == ("delivery", "keeta_sales", shop.entity.id)
+
+
+def test_a_typed_name_that_is_mintys_links_mintys_and_another_companys_stays_theirs(client, shop, methods):
+    octopus = SaleInfo.objects.create(sale_name="Octopus", type=SaleType.ELECTRONIC, value_name="octopus_sales")
+    other = make_entity(shop.owner, name="Other Co")
+    theirs = seed_methods(other, electronic=("Kpay",), delivery=(), own=("Kpay",))["Kpay"]
+
+    assert call(client, shop, "post", "/sales-methods", {"type": "electronic", "name": "octopus"}).status_code == 201
+    assert call(client, shop, "post", "/sales-methods", {"type": "electronic", "name": "Kpay"}).status_code == 201
+
+    assert SaleInfo.objects.filter(sale_name__iexact="octopus").count() == 1
+    assert EntitySaleSetting.objects.filter(entity_id=shop.entity.id, sale_id=octopus.id, is_active=True).exists()
+    mine = SaleInfo.objects.get(sale_name="Kpay", entity_id=shop.entity.id)
+    assert str(mine.id) != theirs
 
 
 def test_a_removed_method_added_again_switches_its_link_back_on(client, shop, methods):
@@ -199,22 +224,45 @@ def test_renaming_removing_and_ordering(client, shop, methods):
     assert renamed.status_code == 200, renamed.json()
     assert names(renamed.json(), "electronic") == ["AlipayHK", "Visa"] and renamed.json()["message"] == "Name saved."
 
+    # Minty's method only comes off the company's list: offered again, the link kept
     removed = call(client, shop, "delete", f"/sales-methods/{visa}")
     assert removed.status_code == 200 and names(removed.json(), "electronic") == ["AlipayHK"]
+    assert removed.json()["message"] == "Visa is off your list. Add it back any time from Add New Method."
     assert visa in [m["id"] for m in removed.json()["available"]["electronic"]]
     assert EntitySaleSetting.objects.get(entity_id=shop.entity.id, sale_id=visa).is_active is False  # the link stays
 
 
-def test_a_shared_method_or_a_taken_name_is_not_renamed(client, shop, methods):
-    seed_methods(make_entity(shop.owner, name="Other Co"), electronic=("Visa",), delivery=())
+def test_mintys_method_is_never_renamed_and_a_taken_name_is_refused(client, shop, methods):
+    mintys = call(client, shop, "put", f"/sales-methods/{methods['Visa']}", {"name": "VISA Card"})
+    assert mintys.status_code == 403
+    assert mintys.json() == {
+        "error": "Visa comes with Minty, so it can't be renamed. Take it off your list and add your own method instead."
+    }
 
-    shared = call(client, shop, "put", f"/sales-methods/{methods['Visa']}", {"name": "VISA Card"})
-    assert shared.status_code == 409
-    assert shared.json() == {"error": "This method is shared with other companies; add a new method instead of renaming it."}
-
-    taken = call(client, shop, "put", f"/sales-methods/{methods['Alipay']}", {"name": "foodpanda"})
-    assert taken.status_code == 409 and taken.json() == {"error": "A method with that name already exists."}
+    for taken_name in ("foodpanda", "VISA"):
+        taken = call(client, shop, "put", f"/sales-methods/{methods['Alipay']}", {"name": taken_name})
+        assert taken.status_code == 409 and taken.json() == {"error": "A method with that name already exists."}
     assert SaleInfo.objects.get(id=methods["Alipay"]).sale_name == "Alipay"
+
+
+def test_the_companys_own_method_is_deleted_completely(client, shop, methods):
+    """owner, 2026-11-12: deleting one's own removes it from the list and from every Add choice; a
+    report that used it keeps its amount (the row stays, switched off)."""
+    alipay = methods["Alipay"]
+    removed = call(client, shop, "delete", f"/sales-methods/{alipay}")
+    assert removed.status_code == 200 and removed.json()["message"] == "Alipay deleted."
+    assert alipay not in [m["id"] for m in removed.json()["available"]["electronic"]]
+    assert not SaleInfo.objects.filter(id=alipay).exists()
+    assert not EntitySaleSetting.objects.filter(sale_id=alipay).exists()
+
+    kept = seed_methods(shop.entity, electronic=("Kpay",), delivery=(), own=("Kpay",))["Kpay"]
+    report = Report.objects.create(entity_id=shop.entity.id, transaction_date="2026-11-01")
+    ReportSale.objects.create(report_id=report.id, sale_id=kept, amount=12)
+    used = call(client, shop, "delete", f"/sales-methods/{kept}")
+    assert used.status_code == 200 and "Kpay" not in names(used.json(), "electronic")
+    assert kept not in [m["id"] for m in used.json()["available"]["electronic"]]
+    assert SaleInfo.objects.get(id=kept).enabled is False
+    assert str(ReportSale.objects.get(report_id=report.id).sale_id) == kept
 
 
 def test_cash_and_unknown_methods_are_not_found(client, shop, methods):

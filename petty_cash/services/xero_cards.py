@@ -257,8 +257,11 @@ def save_mapping(entity: Entity, values: dict, optional=()) -> list[str]:
 # ---- a company keeping its books in Minty (Xero optional, 2026-11-10) ----------------------------
 
 #: The five accounts daily closing uses - the mapping's account fields, minus the discrepancy bank,
-#: which follows the petty cash account. No contact: contacts are Xero's.
+#: which follows the petty cash account.
 MINTY_KEYS = ("main_bank", "deposit_bank", "cashsale_account", "owners_account", "discrepancy_account")
+#: The three contacts, chosen without Xero too (owner, 2026-11-12: contacts are never blocked behind
+#: Xero). Optional there: an empty one leaves the stored choice as it is.
+CONTACT_KEYS = ("cashsale_contact", "owners_contact", "discrepancy_contact")
 #: Optional for a company banking all its sales (``xero_settings.banks_all_sales``).
 CASH_SALE_KEYS = ("cashsale_account", "cashsale_contact")
 
@@ -273,20 +276,30 @@ def _minty_options(entity_id) -> dict[str, list[dict]]:
                    for a in accounts if keep(a.type)] for name, keep in _LISTS.items()}
 
 
+def _contact_options(entity_id) -> list[dict]:
+    """The company's active contacts, named by ``public_id`` (the expense screens' naming)."""
+    from petty_cash.services.expenses import public_id, suppliers
+
+    return [{"id": public_id(c), "name": c.name, "row": c.id} for c in suppliers(entity_id)]
+
+
 def minty_read(entity_id) -> list[dict]:
-    """The mapping card's fields for such a company: the five accounts, chosen from its own."""
-    options = _minty_options(entity_id)
+    """The mapping card's fields with no Xero: the five accounts from the company's own, and the
+    three contacts from its own (optional)."""
+    options = {**_minty_options(entity_id), "contacts": _contact_options(entity_id)}
     row = EntityPettycashSettings.objects.filter(entity_id=entity_id).first()
     fields = []
-    for key, label, _kind, listed, column in FIELDS:
-        if key not in MINTY_KEYS:
+    for key, label, kind, listed, column in FIELDS:
+        if key not in MINTY_KEYS and key not in CONTACT_KEYS:
             continue
         chosen = getattr(row, column, None) if row is not None else None
         offered = options[listed]
         fields.append({
-            "key": key, "label": label, "kind": "account",
-            "options": [{"id": o["id"], "name": o["name"], "code": o["code"]} for o in offered],
+            "key": key, "label": label, "kind": kind,
+            "options": [{"id": o["id"], "name": o["name"], **({"code": o["code"]} if kind == "account" else {})}
+                        for o in offered],
             "selected": next((o["id"] for o in offered if o["row"] == chosen), None),
+            **({"optional": True} if kind == "contact" else {}),
         })
     return fields
 
@@ -302,9 +315,18 @@ def minty_save(entity: Entity, body: dict, may_edit: bool) -> tuple[dict, int]:
     if values["main_bank"] == values["deposit_bank"]:
         return {"error": "The Petty Cash Account and the Deposit Bank Account can't be the same. "
                          "Choose a different one for each."}, 422
-    options = _minty_options(entity.id)
+    options = {**_minty_options(entity.id), "contacts": _contact_options(entity.id)}
     resolved, not_offered = {}, []
     for key, label, _kind, listed, column in FIELDS:
+        if key in CONTACT_KEYS:
+            value = str(body.get(key) or "").strip()
+            if not value:
+                continue  # optional without Xero: the stored choice stays
+            found = next((o["row"] for o in options["contacts"] if o["id"] == value), None)
+            if found is None:
+                not_offered.append(label)
+            resolved[column] = found
+            continue
         if key not in MINTY_KEYS:
             continue
         found = next((o["row"] for o in options[listed] if o["id"] == values[key]), None)
@@ -328,7 +350,7 @@ def _optional(entity_id, mapping: list[dict] | None) -> list[dict] | None:
     if mapping is None:
         return None
     skip = CASH_SALE_KEYS if banks_all_sales(entity_id) else ()
-    return [{**field, "optional": field["key"] in skip} for field in mapping]
+    return [{**field, "optional": field.get("optional", False) or field["key"] in skip} for field in mapping]
 
 
 def payload(entity: Entity, may_edit: bool) -> dict:
@@ -348,8 +370,8 @@ def payload(entity: Entity, may_edit: bool) -> dict:
     return {
         "live": live,
         "organisation": entity.xero_tenant_name if live else None,
-        # without Xero the five accounts are still chosen, from the stored chart; the Xero contacts
-        # wait for Xero (owner, 2026-11-12)
+        # without Xero the five accounts are still chosen, from the stored chart, and the three
+        # contacts from the company's own (owner, 2026-11-12)
         "mapping": _optional(entity.id, read(entity.id) if live else minty_read(entity.id)),
         "mapping_saved": EntityPettycashSettings.objects.filter(entity_id=entity.id).exists(),
         # the codes are the company's stored accounts, ticked here: no Xero needed (owner, 2026-11-12)
@@ -386,7 +408,7 @@ def answer(entity_id, action: str, body, *, may_edit: bool) -> tuple[dict, int]:
                 return {"error": problem}, 422
             return {**payload(entity, may_edit), "message": "Account codes saved."}, 200
         if not is_live(entity):
-            # the five accounts save without Xero; the contacts are left as they are
+            # without Xero the five accounts and the contacts chosen save (an empty contact stays)
             return minty_save(entity, body, may_edit)
     except XeroUnreachable:
         return {"error": UNREACHABLE}, 503

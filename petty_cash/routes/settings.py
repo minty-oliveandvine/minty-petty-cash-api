@@ -35,6 +35,7 @@ from petty_cash.services.settings import (
     add_method,
     available,
     methods,
+    offered,
     remove_method,
     rename_method,
     reorder_methods,
@@ -158,7 +159,10 @@ def add_sales_method(request):
     entity_id = request.company.id
     sale_info_id = None
     if data.get("sale_info_id"):
-        sale = SaleInfo.objects.filter(id=str(data["sale_info_id"])).first() if _uuid(data["sale_info_id"]) else None
+        sale = (
+            SaleInfo.objects.filter(offered(entity_id), id=str(data["sale_info_id"])).first()
+            if _uuid(data["sale_info_id"]) else None
+        )
         if sale is None or not sale.enabled or str(sale.type) != kind:
             raise Refused("Pick one of the methods offered, or type a new name.", 422)
         sale_info_id, name = str(sale.id), sale.sale_name
@@ -209,5 +213,4 @@ def remove_sales_method(request, method_id: str):
     entity_id = request.company.id
     if not _uuid(method_id) or not _listed(entity_id, method_id):
         raise Refused(NOT_FOUND, 404)
-    remove_method(entity_id, str(uuid.UUID(method_id)))
-    return _answer(request, "Method removed. Reports that used it keep their amounts.")
+    return _answer(request, remove_method(entity_id, str(uuid.UUID(method_id))))

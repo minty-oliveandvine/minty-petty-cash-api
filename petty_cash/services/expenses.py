@@ -95,8 +95,10 @@ def find_account(entity_id, value) -> AccountInfo | None:
 
 
 def suppliers(entity_id):
-    """The company's synced Xero contacts, A to Z - the only suppliers a line can carry."""
-    return XeroContactSync.objects.filter(entity_id=entity_id).order_by(Lower("name"))
+    """The company's active suppliers, A to Z - the only ones a line can pick. Archived and merged
+    ones are off every picker (owner, 2026-11-12: a deleted contact leaves the lists)."""
+    return XeroContactSync.objects.filter(entity_id=entity_id, record_status="active",
+                                          merged_into__isnull=True).order_by(Lower("name"))
 
 
 def expense_accounts(entity_id):

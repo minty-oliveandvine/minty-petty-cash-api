@@ -126,7 +126,10 @@ def test_the_card_offers_its_own_accounts_with_no_xero_call(client, minty, monke
     read = _settings(client, minty).json()
     assert read["minty"] is True and read["live"] is False
     fields = {f["key"]: f for f in read["mapping"]}
-    assert list(fields) == ["main_bank", "deposit_bank", "cashsale_account", "owners_account", "discrepancy_account"]
+    # contacts too, without Xero (owner, 2026-11-12), optional: an empty one leaves the stored choice
+    assert list(fields) == ["main_bank", "deposit_bank", "cashsale_account", "cashsale_contact", "owners_account",
+                            "owners_contact", "discrepancy_account", "discrepancy_contact"]
+    assert fields["cashsale_contact"]["kind"] == "contact" and fields["cashsale_contact"]["optional"] is True
     assert {o["name"] for o in fields["main_bank"]["options"]} == {"Petty Cash", "Bank Account"}
     assert [o["name"] for o in fields["discrepancy_account"]["options"]] == ["Cash Over / Short"]
     assert fields["discrepancy_account"]["selected"] is None
@@ -134,10 +137,30 @@ def test_the_card_offers_its_own_accounts_with_no_xero_call(client, minty, monke
     assert fields["main_bank"]["selected"] == str(petty.id), "Minty's own id: there is no Xero id"
 
 
+def test_the_contacts_are_chosen_from_the_companys_own_without_xero(client, minty):
+    _five(minty.entity)
+    walk_in = XeroContactSync.objects.create(entity_id=minty.entity.id, name="Walk-in Customer", source="user")
+    XeroContactSync.objects.create(entity_id=minty.entity.id, name="Gone", source="user", record_status="archived")
+    fields = {f["key"]: f for f in _settings(client, minty).json()["mapping"]}
+    assert [o["name"] for o in fields["cashsale_contact"]["options"]] == ["Walk-in Customer"]
+    body = {k: f["selected"] for k, f in fields.items() if f["kind"] == "account"}
+    body["cashsale_contact"] = str(walk_in.id)
+
+    assert _save(client, minty, body).status_code == 200
+    assert EntityPettycashSettings.objects.get(entity_id=minty.entity.id).cash_sale_contact_id == walk_in.id
+    # an empty contact leaves the stored one; one not offered is refused
+    body["cashsale_contact"] = ""
+    assert _save(client, minty, body).status_code == 200
+    assert EntityPettycashSettings.objects.get(entity_id=minty.entity.id).cash_sale_contact_id == walk_in.id
+    body["owners_contact"] = "not-an-option"
+    resp = _save(client, minty, body)
+    assert resp.status_code == 422 and "Choose the Director / Responsible person from the list." in resp.json()["error"]
+
+
 def test_choosing_the_missing_one_completes_setup(client, minty):
     _five(minty.entity, skip=("discrepancy_account_id",))
     fields = {f["key"]: f for f in _settings(client, minty).json()["mapping"]}
-    body = {k: (f["selected"] or f["options"][0]["id"]) for k, f in fields.items()}
+    body = {k: (f["selected"] or f["options"][0]["id"]) for k, f in fields.items() if f["kind"] == "account"}
     resp = _save(client, minty, body)
     assert resp.status_code == 200 and resp.json()["message"] == "Account mapping saved."
     assert missing_slots(minty.entity.id) == []
@@ -153,7 +176,7 @@ def test_choosing_the_missing_one_completes_setup(client, minty):
 def test_a_mapping_that_does_not_add_up_is_refused(client, minty, change, message):
     _five(minty.entity)
     fields = {f["key"]: f for f in _settings(client, minty).json()["mapping"]}
-    body = {k: f["selected"] for k, f in fields.items()}
+    body = {k: f["selected"] for k, f in fields.items() if f["kind"] == "account"}
     body.update({k: (body["main_bank"] if v == "MAIN" else v) for k, v in change.items()})
     resp = _save(client, minty, body)
     assert resp.status_code == 422 and message in resp.json()["error"]

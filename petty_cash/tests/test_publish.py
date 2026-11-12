@@ -599,3 +599,77 @@ def test_another_companys_report_status_is_404(client, mapped, xero):
     stranger = make_user("stranger@test.com")
     theirs = make_report(make_entity(stranger, name="Their Shop"), D3, created_by=stranger.id)
     assert _status(client, mapped, theirs.id).status_code == 404
+
+
+# ---- Phase 3 of the Xero matching (owner, 2026-11-12): a stale match is refused, named ----------------
+
+
+def _copies(shop, *guids):
+    """The organisation's accounts as the sync's copies hold them."""
+    from django.utils import timezone
+    from minty_db.models import XeroAccount
+
+    for guid in guids:
+        XeroAccount.objects.create(entity_id=shop.entity.id, xero_org_id=ORG, xero_guid=guid, name=guid,
+                                   xero_type="EXPENSE", status="ACTIVE", synced_at=timezone.now())
+
+
+def test_an_account_not_matched_to_this_organisation_is_refused_by_name(client, mapped, xero, threads):
+    report, *_ = _full_day(mapped)
+    held = AccountInfo.objects.filter(entity_id=mapped.entity.id).exclude(xero_code="429")
+    _copies(mapped, *held.values_list("xero_account_id", flat=True))
+    AccountInfo.objects.filter(entity_id=mapped.entity.id, xero_code="429").update(xero_account_id="old-429")
+
+    resp = _publish(client, mapped, report.id)
+
+    assert resp.status_code == 409
+    assert resp.json() == {"error": "Account 429 (429) isn't matched to your Xero organisation. Match it in "
+                                    "Settings, under Integration, then publish again."}
+    assert threads == [] and Report.objects.get(id=report.id).publishing_status != "publishing"
+
+
+def test_an_account_archived_in_xero_is_refused_by_name(client, mapped, xero, threads):
+    from minty_db.models import XeroAccount
+
+    report, *_ = _full_day(mapped)
+    _copies(mapped, *AccountInfo.objects.filter(entity_id=mapped.entity.id).values_list("xero_account_id", flat=True))
+    XeroAccount.objects.filter(entity_id=mapped.entity.id, xero_guid="acc-429").update(status="ARCHIVED")
+
+    resp = _publish(client, mapped, report.id)
+
+    assert resp.status_code == 409
+    assert resp.json() == {"error": "Account 429 (429) is archived in Xero. Restore it in Xero or choose another "
+                                    "account, then publish again."}
+
+
+def test_a_supplier_of_an_older_organisation_is_not_refused(client, mapped, xero, threads):
+    """The census (production's data, 2026-11-12): the publish re-creates a supplier Xero doesn't
+    know, as it always has, so an older organisation's supplier isn't a reason to refuse."""
+    report, *_ = _full_day(mapped)
+    XeroContactSync.objects.filter(entity_id=mapped.entity.id, xero_contact_id="con-sup").update(
+        xero_org_id="org-old")
+    assert _publish(client, mapped, report.id).status_code == 202
+
+
+def test_several_stale_matches_are_listed_one_a_line(client, mapped, xero, threads):
+    report, *_ = _full_day(mapped)
+    _copies(mapped, "acc-091")
+    resp = _publish(client, mapped, report.id)
+    assert resp.status_code == 409
+    lines = resp.json()["error"].split("\n")
+    assert len(lines) > 1 and all("isn't matched to your Xero organisation" in line for line in lines)
+
+
+@pytest.mark.parametrize("reason", ["first", "new_accounts", "new_org"])
+def test_an_open_matching_holds_every_publish(client, mapped, xero, threads, reason):
+    Entity.objects.filter(id=mapped.entity.id).update(xero_matching=reason)
+    report, *_ = _full_day(mapped)
+    resp = _publish(client, mapped, report.id)
+    assert (resp.status_code, resp.json()) == (409, {"error": pub.STILL_MATCHING})
+
+
+def test_a_change_of_matches_in_progress_does_not_hold_a_publish(client, mapped, xero, threads):
+    Entity.objects.filter(id=mapped.entity.id).update(xero_matching="change")
+    report, *_ = _full_day(mapped)
+    assert _publish(client, mapped, report.id).status_code == 202
+

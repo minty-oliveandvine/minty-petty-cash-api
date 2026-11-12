@@ -122,27 +122,29 @@ def test_the_cards_read_the_lists_once_the_connection_is_live(client, lists, xer
     assert body["permissions"] == {"edit_mapping": True, "edit_account_codes": True}
 
 
-def test_without_a_live_connection_the_accounts_and_codes_stay_and_the_contacts_wait(client, lists, xero):
+def test_without_a_live_connection_the_accounts_codes_and_contacts_all_stay(client, lists, xero):
     """Owner, 2026-11-12: without Xero the card still shows - the five accounts from the company's
-    stored chart and the account codes, both saved here; only the Xero contacts wait for Xero."""
+    stored chart, the account codes and (later that day) the contacts, all saved here."""
     xero.listed = False  # revoked on Xero's side: the token still works
 
     body = call(client, lists, "get", "/settings/xero").json()
     assert body["live"] is False and xero.syncs == []
     assert [f["key"] for f in body["mapping"]] == [
-        "main_bank", "deposit_bank", "cashsale_account", "owners_account", "discrepancy_account"]
+        "main_bank", "deposit_bank", "cashsale_account", "cashsale_contact", "owners_account", "owners_contact",
+        "discrepancy_account", "discrepancy_contact"]
     assert {o["id"] for o in _field(body, "main_bank")["options"]} >= {"acc-pc", "acc-dep"}
     assert body["account_codes"] == [{"code": "400", "name": "Advertising", "selected": True},
                                      {"code": "404", "name": "Bank Fees", "selected": False}]
     assert Entity.objects.get(id=lists.entity.id).status == "disconnected"
 
-    # the five accounts save without Xero; the contacts sent are ignored, never cleared
+    # the five accounts and the contacts save without Xero
     saved = call(client, lists, "put", "/settings/xero/mapping", MAPPING)
     assert saved.status_code == 200, saved.json()
     assert saved.json()["message"] == "Account mapping saved."
     row = EntityPettycashSettings.objects.get(entity_id=lists.entity.id)
     assert row.pettycash_account_id == AccountInfo.objects.get(xero_account_id="acc-pc").id
     assert row.discrepancy_bank_account_id == row.pettycash_account_id
+    assert row.cash_sale_contact_id is not None
     assert _field(saved.json(), "main_bank")["selected"] == "acc-pc"
 
     resp = call(client, lists, "put", "/settings/xero/account-codes", {"codes": ["404"]})
