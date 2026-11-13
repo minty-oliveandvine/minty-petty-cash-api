@@ -178,6 +178,32 @@ def test_another_companys_history_is_refused_at_the_door(client, shop, flask):
     assert resp.status_code == 403
 
 
+def test_each_row_names_who_submitted_and_who_published_it(client, shop, flask):
+    """Submitted by = ``report.created_by``; Published by = the latest ``published`` history row,
+    only while the report is in Xero (edited since, or never published: null)."""
+    publisher = make_user("pub@test.com", first_name="Sam")
+    later = make_user("later@test.com", first_name="Kit")
+    published = _older(shop, days_back=0, xero_integrated=True, publishing_status="completed")
+    first = ReportHistory.objects.create(id=uuid.uuid4(), report_id=published.id, user_id=later.id,
+                                         action="published")
+    ReportHistory.objects.create(id=uuid.uuid4(), report_id=published.id, user_id=publisher.id, action="published")
+    # now() is frozen in a test transaction: the earlier publish gets an earlier time by hand
+    ReportHistory.objects.filter(id=first.id).update(created_at=first.created_at - timedelta(hours=1))
+    edited = _older(shop, days_back=1, xero_integrated=False, publishing_status="completed")
+    ReportHistory.objects.create(id=uuid.uuid4(), report_id=edited.id, user_id=publisher.id, action="published")
+    submitted = _older(shop, days_back=2)
+    no_row = _older(shop, days_back=3, xero_integrated=True, publishing_status="completed")
+
+    rows = {r["id"]: r for r in _get(client, shop).json()["reports"]}
+
+    assert {i: (r["submitted_by"], r["published_by"]) for i, r in rows.items()} == {
+        str(published.id): ("Olive", "Sam"),
+        str(edited.id): ("Olive", None),
+        str(submitted.id): ("Olive", None),
+        str(no_row.id): ("Olive", None),
+    }
+
+
 def test_a_stale_draft_in_the_history_may_be_deleted(client, shop, flask):
     """A draft dated before the last submitted day: never the latest, yet deletable (2026-10-26)."""
     _older(shop, days_back=0)

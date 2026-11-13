@@ -102,6 +102,7 @@ def history(request):
             "total_sales": out(report.total_sales),
             "total_expenses": out(report.expense_total),
             "submitted_by": data["first_names"].get(report.created_by) or None,
+            "published_by": data["first_names"].get(data["publishers"].get(report.id)) or None,
             "created_at": _iso(hk(report.created_at)),  # when the day was started - a draft's only time
             "submitted_at": _iso(hk(report.submitted_at)),
             "published_at": _iso(hk(report.published_at)),

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from django.db.models import Q
 from minty_db.enums import ReportStatus
-from minty_db.models import Report, User
+from minty_db.models import Report, ReportHistory, User
 
 #: The history page's filter chips -> the Status pills each keeps (``report_page.report_status``).
 STATUS_FILTERS = ("draft", "submitted", "published", "failed")
@@ -32,8 +32,10 @@ def _status_q(status: str) -> Q:
 
 
 def report_history(entity_id, *, status=None, start_date=None, end_date=None, page=1, per_page=10) -> dict:
-    """``{reports, first_names, total_count, total_pages, latest_report_id}`` - ``first_names`` maps
-    a creator's id to their first name (one query for the page)."""
+    """``{reports, first_names, publishers, total_count, total_pages, latest_report_id}`` -
+    ``first_names`` maps a creator's or publisher's id to their first name (one query for the page);
+    ``publishers`` maps a report in Xero to who published it last (its newest ``published`` history
+    row; a report with no such row, as loaded from pettycashv2, has none)."""
     reports = Report.objects.filter(entity_id=entity_id)
     if start_date and end_date:
         reports = reports.filter(transaction_date__gte=start_date, transaction_date__lte=end_date)
@@ -42,9 +44,16 @@ def report_history(entity_id, *, status=None, start_date=None, end_date=None, pa
     total_count = reports.count()
     total_pages = (total_count + per_page - 1) // per_page if total_count else 1
     rows = list(reports.order_by("-transaction_date")[(page - 1) * per_page:page * per_page])
-    first_names = dict(User.objects.filter(id__in={r.created_by for r in rows if r.created_by})
-                       .values_list("id", "first_name"))
+    publishers = {}
+    in_xero = [r.id for r in rows if r.xero_integrated]
+    if in_xero:
+        published = (ReportHistory.objects.filter(report_id__in=in_xero, action="published", user_id__isnull=False)
+                     .order_by("report_id", "-created_at").values_list("report_id", "user_id"))
+        for report_id, user_id in published:
+            publishers.setdefault(report_id, user_id)  # newest first within each report
+    people = {r.created_by for r in rows if r.created_by} | set(publishers.values())
+    first_names = dict(User.objects.filter(id__in=people).values_list("id", "first_name"))
     # The newest day of any status, a draft included.
     latest = Report.objects.filter(entity_id=entity_id).order_by("-transaction_date").values_list("id", flat=True).first()
-    return {"reports": rows, "first_names": first_names, "total_count": total_count, "total_pages": total_pages,
+    return {"reports": rows, "first_names": first_names, "publishers": publishers, "total_count": total_count, "total_pages": total_pages,
             "latest_report_id": str(latest) if latest else None}
