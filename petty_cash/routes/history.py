@@ -8,8 +8,15 @@ reasons (``services/publish_reasons.py``, worked out here since Phase 3 of the F
 ``GET /reports/export.csv?start_date=&end_date=``: the movements CSV of the submitted reports in the
 range (``services/report_csv.py``, Flask's ``report_csv.py`` byte for byte) as a file. Both dates,
 ``YYYY-MM-DD``, start on or before end, at most a year (366 days); a bad range is 422, nothing to
-export 404. Static, and the report router is mounted last, so ``/reports/{report_id}`` never
+export 404. With neither date it is the company's whole history (owner, 2026-11-13; Flask refused
+it), named by its first and last day; one date alone is still 422. Static, and the report router is
+mounted last, so ``/reports/{report_id}`` never
 captures it.
+
+``GET /reports/petty-cash-report.csv?start_date=&end_date=``: the Petty Cash Report beside it
+(``services/petty_cash_report_csv.py``; owner, 2026-11-13) - each submitted day's report, then its
+expense lines with their account and supplier. Same access, dates (optional: the whole history
+with neither), refusals and headers as the movements CSV.
 """
 
 from __future__ import annotations
@@ -25,7 +32,7 @@ from core.policy import Permission, can_delete_report, has_permission
 from petty_cash.days import hk
 from petty_cash.money import out
 from petty_cash.routes.close import _iso
-from petty_cash.services import report_csv
+from petty_cash.services import petty_cash_report_csv, report_csv
 from petty_cash.services.history import STATUS_FILTERS, report_history
 from petty_cash.services.publish_reasons import publish_reasons
 from petty_cash.services.report_actions import was_published
@@ -45,6 +52,7 @@ EXPORT_REFUSALS = {
 }
 NO_EXPORT_ACCESS = "You don't have permission to export this company's reports."
 NOTHING_TO_EXPORT = "There are no submitted reports between those dates. Choose another range."
+NOTHING_SUBMITTED = "There are no submitted reports to export yet."
 
 
 def _filters(args) -> dict:
@@ -129,19 +137,49 @@ def history(request):
     }
 
 
+def _export_reports(request, entity_id):
+    """The reports an export covers, the days that name its file and the 404 sentence when it holds
+    nothing: both dates' range, or with neither the whole history. A bad range is 422."""
+    start, end = request.GET.get("start_date"), request.GET.get("end_date")
+    if not start and not end:
+        reports = report_csv.every_submitted_report(entity_id)
+        if not reports:
+            raise Refused(NOTHING_SUBMITTED, 404)
+        return reports, reports[0].transaction_date, reports[-1].transaction_date, NOTHING_SUBMITTED
+    try:
+        first, last = report_csv.parse_range(start, end)
+    except report_csv.RangeRefused as refused:
+        raise Refused(EXPORT_REFUSALS[refused.reason], 422) from None
+    reports = report_csv.submitted_reports(entity_id, first, last)
+    if not reports:
+        raise Refused(NOTHING_TO_EXPORT, 404)
+    return reports, first, last, NOTHING_TO_EXPORT
+
+
 @router.get("/reports/export.csv")
 def export_csv(request):
     entity_id = request.company.id
     if not report_csv.may_export(request.auth_user, entity_id):
         raise Refused(NO_EXPORT_ACCESS, 403)
-    try:
-        first, last = report_csv.parse_range(request.GET.get("start_date"), request.GET.get("end_date"))
-    except report_csv.RangeRefused as refused:
-        raise Refused(EXPORT_REFUSALS[refused.reason], 422) from None
-    rows = report_csv.movements(entity_id, report_csv.submitted_reports(entity_id, first, last))
-    if not rows:
-        raise Refused(NOTHING_TO_EXPORT, 404)
+    reports, first, last, nothing = _export_reports(request, entity_id)
+    rows = report_csv.movements(entity_id, reports)
+    if not rows:  # submitted days with no money movement at all
+        raise Refused(nothing, 404)
     # Access-Control-Expose-Headers: Content-Disposition is settings.CORS_EXPOSE_HEADERS
     resp = HttpResponse(report_csv.to_csv(rows), content_type="text/csv; charset=utf-8")
     resp["Content-Disposition"] = report_csv.export_disposition(request.company.name, first, last)
+    return resp
+
+
+@router.get("/reports/petty-cash-report.csv")
+def export_petty_cash_report(request):
+    entity_id = request.company.id
+    if not report_csv.may_export(request.auth_user, entity_id):
+        raise Refused(NO_EXPORT_ACCESS, 403)
+    reports, first, last, _ = _export_reports(request, entity_id)
+    body = petty_cash_report_csv.rows(reports, currency_code(entity_id))
+    # Access-Control-Expose-Headers: Content-Disposition is settings.CORS_EXPOSE_HEADERS
+    resp = HttpResponse(petty_cash_report_csv.to_csv(body), content_type="text/csv; charset=utf-8")
+    resp["Content-Disposition"] = report_csv.export_disposition(
+        request.company.name, first, last, label=petty_cash_report_csv.FILE_LABEL)
     return resp

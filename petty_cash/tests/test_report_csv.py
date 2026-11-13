@@ -135,9 +135,24 @@ def test_a_company_name_outside_ascii_travels_as_filename_star(client, books):
         f"attachment; filename=and-co{tail}; filename*=UTF-8''%E8%8C%B6%E9%A4%90%E5%BB%B3-and-co{tail}")
 
 
+def test_with_no_dates_it_is_the_whole_history(client, books):
+    """Owner, 2026-11-13: the export needs no dates (Flask refused it) - every submitted day."""
+    resp = _get(client, books.entity, books.owner)
+
+    assert resp.status_code == 200, resp.content[:300]
+    assert resp.content == _bytes(SUBMITTED_ROWS)  # the draft still left out
+    assert resp["Content-Disposition"] == f"attachment; filename=acme-shop_reports_{_day(1)}_to_{_day(0)}.csv"
+
+
+def test_with_no_dates_and_nothing_submitted_is_404(client, shop):
+    make_report(shop.entity, D3, status="draft", opening_balance=0, closing_balance=0)
+    resp = _get(client, shop.entity, shop.owner)
+    assert resp.status_code == 404 and resp.json() == {"error": "There are no submitted reports to export yet."}
+
+
 @pytest.mark.parametrize("query, message", [
-    ({}, "Choose both dates to export the reports between them."),
     ({"start_date": "2026-10-01"}, "Choose both dates to export the reports between them."),
+    ({"end_date": "2026-10-02"}, "Choose both dates to export the reports between them."),
     ({"start_date": "01/10/2026", "end_date": "2026-10-02"},
      "A date isn't in the YYYY-MM-DD form. Choose it from the calendar."),
     ({"start_date": "2026-10-05", "end_date": "2026-10-02"},

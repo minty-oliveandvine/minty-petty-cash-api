@@ -92,7 +92,7 @@ def main() -> int:
                                                          "close")]
     for report_id in args.report:
         reads += [f"/reports/{report_id}/outcome", f"/reports/{report_id}", f"/reports/{report_id}/publishing-status"]
-    reads.append("/reports/export.csv")  # no dates: the 422
+    reads.append("/reports/export.csv")  # no dates: Flask's 422; the whole history here since 2026-11-13
     if args.day:
         # the longest range the export allows (366 days), ending on the day
         start = (date.fromisoformat(args.day) - timedelta(days=365)).isoformat()

@@ -426,6 +426,26 @@
         ]
       }
     },
+    "/api/petty-cash/v1/companies/{entity_id}/reports/petty-cash-report.csv": {
+      "get": {
+        "operationId": "petty_cash_routes_history_export_petty_cash_report",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PettyCashBearerAuth": []
+          }
+        ],
+        "summary": "Export Petty Cash Report",
+        "tags": [
+          "History"
+        ]
+      }
+    },
     "/api/petty-cash/v1/companies/{entity_id}/reports/sales": {
       "get": {
         "operationId": "petty_cash_routes_sales_sales_page",

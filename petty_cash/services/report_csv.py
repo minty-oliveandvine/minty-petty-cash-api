@@ -76,6 +76,13 @@ def submitted_reports(entity_id, first: date, last: date) -> list[Report]:
     )
 
 
+def every_submitted_report(entity_id) -> list[Report]:
+    """The company's submitted and published reports, by day (never a draft) - the whole history,
+    what an export with no dates covers (owner, 2026-11-13)."""
+    return list(Report.objects.filter(entity_id=entity_id).exclude(status=ReportStatus.DRAFT)
+                .order_by("transaction_date"))
+
+
 def _codes(entity_id) -> dict:
     """Each configured role's account code: ``""`` when the account has no code, absent when the
     role has no account."""
@@ -137,11 +144,11 @@ def movements(entity_id, reports) -> list[list[str]]:
     return rows
 
 
-def to_csv(rows) -> bytes:
-    """The file: the header, then ``rows``; UTF-8 without a byte-order mark."""
+def to_csv(rows, columns=COLUMNS) -> bytes:
+    """The file: the header (``columns``), then ``rows``; UTF-8 without a byte-order mark."""
     buffer = io.StringIO()
     writer = csv.writer(buffer, lineterminator=LINE_END)
-    writer.writerow(COLUMNS)
+    writer.writerow(columns)
     writer.writerows(rows)
     return buffer.getvalue().encode("utf-8")
 
@@ -155,10 +162,10 @@ def slugify_name(name: str | None) -> str:
     return slug or EMPTY_SLUG
 
 
-def export_disposition(company_name: str | None, first: date, last: date) -> str:
-    """The ``Content-Disposition``: the company's address name and the range. A name with letters
-    outside ASCII travels as ``filename*`` (RFC 6266), with an ASCII ``filename`` beside it."""
-    tail = f"_reports_{first.isoformat()}_to_{last.isoformat()}.csv"
+def export_disposition(company_name: str | None, first: date, last: date, label: str = "reports") -> str:
+    """The ``Content-Disposition``: the company's address name, ``label`` and the range. A name with
+    letters outside ASCII travels as ``filename*`` (RFC 6266), with an ASCII ``filename`` beside it."""
+    tail = f"_{label}_{first.isoformat()}_to_{last.isoformat()}.csv"
     slug = slugify_name(company_name)
     if slug.isascii():
         return f"attachment; filename={slug}{tail}"
