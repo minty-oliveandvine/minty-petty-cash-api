@@ -37,7 +37,7 @@ from petty_cash.services.cash import (
     save_deposit,
     save_deposit_and_count,
 )
-from petty_cash.services.denominations import denomination_rows, denominations_for
+from petty_cash.services.denominations import denominations_for, denominations_payload
 from petty_cash.services.reports import currency_code, draft_payload, find_draft, progress_payload
 
 router = Router()
@@ -131,11 +131,7 @@ def cash_count_page(request):
         "currency_code": currency_code(entity_id),
         "draft": draft_payload(draft),
         **_figures(draft),
-        "denominations": [
-            {"id": str(row["cash_id"]), "value": row["value"], "kind": str(row["type"] or ""),
-             "name": row["name"], "count": int(row["count"] or 0)}
-            for row in denomination_rows(entity_id, draft.id)
-        ],
+        "denominations": denominations_payload(entity_id, draft.id),
         "safe_box_balance": out(draft.safe_box_balance),
         "discrepancy": {
             "amount": out(draft.discrepancy_amount),

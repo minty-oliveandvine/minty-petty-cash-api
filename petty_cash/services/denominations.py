@@ -87,6 +87,16 @@ def denomination_rows(entity_id, report_id) -> list[dict]:
     ]
 
 
+def denominations_payload(entity_id, report_id) -> list[dict]:
+    """The counts as the API sends them - the Cash Count step's read and a report's own read
+    (its read-only Cash Count view) alike."""
+    return [
+        {"id": str(row["cash_id"]), "value": row["value"], "kind": str(row["type"] or ""),
+         "name": row["name"], "count": int(row["count"] or 0)}
+        for row in denomination_rows(entity_id, report_id)
+    ]
+
+
 def save_counts(report_id, counts: dict) -> None:
     """Upsert the counted quantities; a zero removes the row. The face value in force is
     snapshotted on the row. No commit - the caller's transaction holds the count and its

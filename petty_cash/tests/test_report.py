@@ -86,6 +86,47 @@ def test_the_daily_report_brings_the_day_and_what_may_be_done(client, shop, note
     assert body["options"] == {"suppliers": [], "accounts": []}
 
 
+def test_the_daily_report_brings_the_cash_count_as_the_cash_count_step_read_it(client, shop, notes):
+    """The read-only Cash Count view draws each denomination's count: the same rows the draft's
+    ``GET /reports/cash-count`` gave, kept after the submit."""
+    _ready(shop, notes)
+    step = client.get(url(shop.entity.id, "/reports/cash-count"), {"transaction_date": D3.isoformat()},
+                      headers=headers(shop.owner.id))
+    assert step.status_code == 200, step.json()
+    report = Report.objects.get(entity_id=shop.entity.id, transaction_date=D3)
+    assert _submit(client, shop).status_code == 200
+
+    body = _get(client, shop, report.id).json()
+
+    assert body["cash"]["denominations"] == step.json()["denominations"]
+    counted = {row["value"]: row["count"] for row in body["cash"]["denominations"] if row["count"]}
+    assert counted == {50: 1, 5: 1}
+
+
+def test_a_report_with_nothing_counted_lists_every_denomination_at_zero(client, shop, notes):
+    report = _submitted(client, shop, notes)
+    ReportCashCount.objects.filter(report_id=report.id).delete()
+
+    rows = _get(client, shop, report.id).json()["cash"]["denominations"]
+
+    assert rows and all(row["count"] == 0 for row in rows)
+
+
+def test_the_daily_report_brings_the_safebox_the_day_opened_with(client, shop, notes):
+    """The read-only Opening view splits the starting balance as the Opening step does: the safebox
+    is the report before's; none before, nothing in it."""
+    _older(shop, safe_box_balance=30)
+    report = _submitted(client, shop, notes)
+
+    assert _get(client, shop, report.id).json()["cash"]["opening_safe_box"] == 30
+
+
+def test_the_first_report_opened_with_an_empty_safebox(client, shop, notes):
+    report = _submitted(client, shop, notes)
+
+    assert _get(client, shop, report.id).json()["cash"]["opening_safe_box"] == 0
+
+
 def test_the_steps_are_not_taken_for_a_report_id(client, shop, notes):
     """``/reports/{id}`` is mounted last: ``/reports/opening`` is still the Opening step."""
     resp = client.get(url(shop.entity.id, "/reports/opening"), headers=headers(shop.owner.id))

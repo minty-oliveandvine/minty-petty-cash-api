@@ -41,6 +41,7 @@ from petty_cash.routes._input import form_and_files, json_body
 from petty_cash.routes.close import _iso, _sales_history, report_totals
 from petty_cash.routes.expenses import _company_line, lines_payload
 from petty_cash.services.cash import expected_cash
+from petty_cash.services.denominations import denominations_payload
 from petty_cash.services.expenses import expense_accounts, lines, public_id, suppliers
 from petty_cash.services.publish import PublishRefused, start_publish
 from petty_cash.services.publish_reasons import publish_reasons
@@ -59,7 +60,7 @@ from petty_cash.services.report_edits import (
     may_edit_details,
 )
 from petty_cash.services.report_page import cash_summary, report_facts, report_status
-from petty_cash.services.reports import currency_code, is_stale_draft
+from petty_cash.services.reports import currency_code, is_stale_draft, previous_report
 from petty_cash.services.sales import cash_sales_from_detail, report_methods, sales_groups
 from petty_cash.services.share import ShareRefused, create_share_link
 from petty_cash.services.xero_settings import minty_on_its_own
@@ -119,6 +120,11 @@ def report_figures(report: Report, entity_id) -> dict:
     }
 
 
+def _opening_safe_box(entity_id, report: Report) -> Decimal:
+    before = previous_report(entity_id, report.transaction_date)
+    return cents(before.safe_box_balance) if before and before.safe_box_balance is not None else Decimal("0.00")
+
+
 def report_payload(request, report: Report) -> dict:
     """The Daily Report as ``GET /reports/{id}`` answers it (the edits answer it too)."""
     entity_id, user = request.company.id, request.auth_user
@@ -151,7 +157,14 @@ def report_payload(request, report: Report) -> dict:
             "lines": lines_payload(expense_lines),
             "total": out(sum((cents(line.amount) for line in expense_lines), Decimal("0.00"))),
         },
-        "cash": figures["cash"],
+        # for the read-only step views; not in report_figures, so the share page has neither:
+        # the safebox the day opened with (the report before's, as the Opening step splits it)
+        # and the Cash Count step's rows
+        "cash": {
+            **figures["cash"],
+            "opening_safe_box": out(_opening_safe_box(entity_id, report)),
+            "denominations": denominations_payload(entity_id, report.id),
+        },
         "closing_balance": figures["closing_balance"],
         "permissions": {
             "edit": status != "draft" and latest and has_permission(user, Permission.REPORT_EDIT_OWN, entity_id),

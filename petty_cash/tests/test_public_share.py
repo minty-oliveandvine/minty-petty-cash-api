@@ -110,6 +110,7 @@ def test_anyone_with_the_link_reads_the_day_and_nothing_more(shop, shared):
     }
     assert day["cash"]["difference"] == {"amount": 0, "kind": "none", "reason": ""}
     assert day["cash"]["expected"] == 55 and day["closing_balance"] == 55
+    assert not {"denominations", "opening_safe_box"} & day["cash"].keys()  # the step views stay inside the company
     assert day["expires_at"] == body["expires_at"]
     keys = set(_keys(day))
     assert not [k for k in keys if k.split(".")[-1] in {"id", "sale_id", "report_id", "key", "mime_type"}
