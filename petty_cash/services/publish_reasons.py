@@ -39,8 +39,13 @@ from minty_db.models import (
 from core.xero_tokens import XeroTokenUnavailable, xero_token
 from petty_cash.services.xero_settings import account_for_role, contact_for_role
 from petty_cash.xero.errors import PublishFailureReason
+from petty_cash.xero.steps import DEPS_CASH_SALES, DEPS_DEPOSIT, DEPS_DISCREPANCY
 
 logger = logging.getLogger("petty-cash-api")
+
+#: A company-wide step whose accounts never vary, by the item's ``module``. Withdrawal is left
+#: out: what it uses depends on who added the cash (director or company bank).
+MODULE_FIXED_DEPS = {"discrepancy": DEPS_DISCREPANCY, "deposit": DEPS_DEPOSIT, "invoices": DEPS_CASH_SALES}
 
 #: The most report ids one answer works out (the history page shows 10 a page).
 MAX_REPORTS = 100
@@ -160,15 +165,24 @@ def _expense_targets(report_id, item: dict) -> list[ReportExpense] | None:
     return None
 
 
+def _petty_cash_not_known_bad(entity_id) -> bool:
+    """Every expense posts into the petty cash account: a mapped one that is no longer active
+    holds the reason open (an unmapped one is the settings' problem, not the line's)."""
+    found = account_for_role(entity_id, "pettycash")
+    if not found:
+        return True
+    return AccountInfo.objects.filter(id=found["account_id"], status="ACTIVE").exists()
+
+
 def _infer_deps(text: str | None) -> list[list[str]]:
     """What a legacy entity-wide reason with no stored deps depends on, from its wording."""
     t = (text or "").lower()
     if "cash sale" in t:
-        return [["contact", "cashsale_contact"], ["account", "cash_sale"]]
+        return [list(d) for d in DEPS_CASH_SALES]
     if "discrepancy" in t:
-        return [["contact", "discrepancy_contact"], ["account", "discrepancy_account"]]
+        return [list(d) for d in DEPS_DISCREPANCY]
     if "deposit" in t:
-        return [["account", "pettycash"], ["account", "bank"]]
+        return [list(d) for d in DEPS_DEPOSIT]
     if "withdrawal" in t or "director" in t:
         return [["contact", "director_contact"], ["account", "director"], ["account", "pettycash"]]
     return []
@@ -180,13 +194,17 @@ def _resolve_item(entity_id, report_id, item: dict, cache: dict) -> tuple[bool, 
     if targets is not None:
         if not targets:
             return True, True  # the line was removed: nothing left to fix
-        resolved = all(
+        resolved = _petty_cash_not_known_bad(entity_id) and all(
             _contact_active(entity_id, line.contact.xero_contact_id if line.contact else None, cache)
             and _account_not_known_bad(entity_id, line.account.xero_code if line.account else None)
             for line in targets
         )
         return resolved, True
-    deps = item.get("deps") or _infer_deps(item.get("text"))
+    deps = [list(d) for d in (item.get("deps") or _infer_deps(item.get("text")))]
+    # Rows stored before a step's deps were complete are re-checked against what the step uses now.
+    for dep in MODULE_FIXED_DEPS.get(item.get("module"), []):
+        if deps and list(dep) not in deps:
+            deps.append(list(dep))
     if deps:
         return all(_dep_valid(entity_id, kind, role, cache) for kind, role in deps), True
     return False, False

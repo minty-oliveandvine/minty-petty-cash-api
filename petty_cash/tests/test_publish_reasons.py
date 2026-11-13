@@ -221,6 +221,56 @@ def test_a_legacy_company_reason_infers_its_deps_from_the_wording(shop, xero):
     assert _reasons(shop, report) == [{"text": "Deposit - bank account missing", "resolved": True}]
 
 
+def _discrepancy_mapped(shop, xero, *, petty_status="ACTIVE"):
+    """A company whose discrepancy contact and account are fine; only petty cash's status varies."""
+    contact = _contact(shop, "con-d", "Discrepancy")
+    xero.statuses["con-d"] = "ACTIVE"
+    account, petty = _account(shop, "480"), _account(shop, "1011", status=petty_status)
+    EntityPettycashSettings.objects.create(entity_id=shop.entity.id, discrepancy_contact_id=contact.id,
+                                           discrepancy_account_id=account.id, pettycash_account_id=petty.id,
+                                           discrepancy_bank_account_id=petty.id)
+    return petty
+
+
+OLD_DISCREPANCY_DEPS = [["contact", "discrepancy_contact"], ["account", "discrepancy_account"]]
+
+
+@pytest.mark.parametrize("deps", [OLD_DISCREPANCY_DEPS, None], ids=["stored-before-the-fix", "legacy-wording"])
+def test_a_discrepancy_stays_open_while_the_petty_cash_account_it_posts_into_is_archived(shop, xero, deps):
+    """The discrepancy posts into the petty cash account; rows stored before its deps named it
+    are still held open by it (2026-11-13: a ticked Discrepancy that kept failing)."""
+    petty = _discrepancy_mapped(shop, xero, petty_status="ARCHIVED")
+    item = {"text": "Discrepancy - account is no longer active in Xero", "scope": "entity",
+            "module": "discrepancy"}
+    if deps is not None:
+        item["deps"] = deps
+    report = _failed(shop, [item])
+    assert _reasons(shop, report)[0]["resolved"] is False
+
+    AccountInfo.objects.filter(id=petty.id).update(status="ACTIVE")
+    assert _reasons(shop, report)[0]["resolved"] is True
+
+
+def test_the_discrepancy_step_names_the_petty_cash_account_it_posts_into():
+    from petty_cash.xero import steps
+
+    assert ["account", "pettycash"] in steps.DEPS_DISCREPANCY
+
+
+def test_an_expense_stays_open_while_the_mapped_petty_cash_account_is_archived(shop, xero):
+    contact, account = _contact(shop, "con-1"), _account(shop, "400")
+    xero.statuses["con-1"] = "ACTIVE"
+    petty = _account(shop, "1011", status="ARCHIVED")
+    EntityPettycashSettings.objects.create(entity_id=shop.entity.id, pettycash_account_id=petty.id)
+    report = make_report(shop.entity, D3, created_by=shop.owner.id, publishing_status="failed")
+    line = _line(report, "Coffee", contact=contact, account=account)
+    _history(report, [{"text": "Expense 'Coffee' - x", "scope": "expense", "expense_id": str(line.id)}])
+    assert _reasons(shop, report)[0]["resolved"] is False
+
+    AccountInfo.objects.filter(id=petty.id).update(status="ACTIVE")
+    assert _reasons(shop, report)[0]["resolved"] is True
+
+
 def test_a_reason_with_nothing_to_re_check_stays_open(shop, xero):
     report = _failed(shop, [{"text": "Xero connection has expired"}])
     assert _reasons(shop, report) == [{"text": "Xero connection has expired", "resolved": False}]

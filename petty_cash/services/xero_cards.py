@@ -113,10 +113,15 @@ def refresh_from_xero(entity: Entity) -> None:
 # ---- the lists -------------------------------------------------------------------------------
 
 
+def _archived(row: AccountInfo | None) -> bool:
+    """A chosen account Xero no longer has active (or Minty archived): a publish into it fails."""
+    return row is not None and ((row.status or "ACTIVE") != "ACTIVE" or row.record_status == "archived")
+
+
 def _account(row: AccountInfo) -> dict:
     """Flask's ``account_info_to_xero_format``."""
     found = {"AccountID": row.xero_account_id, "Name": row.name, "Type": row.type, "Code": row.xero_code or "",
-             "Status": row.status or "ACTIVE"}
+             "Status": row.status or "ACTIVE", "archived": _archived(row)}
     if row.type == "BANK" and row.bank_account_number:
         found["MaskedBankAccountNumber"] = mask_account_number(row.bank_account_number)
     return found
@@ -161,6 +166,7 @@ def read(entity_id) -> list[dict]:
                          **({} if kind == "contact" else {"code": o.get("Code") or ""})}
                         for o in found["lists"][listed] if o.get(id_key)],
             "selected": (found["saved"][key] or {}).get(id_key),
+            **({} if kind == "contact" else {"archived": bool((found["saved"][key] or {}).get("archived"))}),
         })
     return fields
 
@@ -294,12 +300,22 @@ def minty_read(entity_id) -> list[dict]:
             continue
         chosen = getattr(row, column, None) if row is not None else None
         offered = options[listed]
+        archived = False
+        if kind == "account" and chosen and not any(o["row"] == chosen for o in offered):
+            # A saved account no longer active stays shown, marked, rather than reading as unchosen.
+            saved = AccountInfo.objects.filter(id=chosen, entity_id=entity_id).first()
+            if saved is not None:
+                from petty_cash.services.expenses import public_id
+
+                offered = [*offered, {"id": public_id(saved), "name": saved.name, "code": saved.xero_code or "",
+                                      "row": saved.id}]
+                archived = _archived(saved)
         fields.append({
             "key": key, "label": label, "kind": kind,
             "options": [{"id": o["id"], "name": o["name"], **({"code": o["code"]} if kind == "account" else {})}
                         for o in offered],
             "selected": next((o["id"] for o in offered if o["row"] == chosen), None),
-            **({"optional": True} if kind == "contact" else {}),
+            **({"optional": True} if kind == "contact" else {"archived": archived}),
         })
     return fields
 

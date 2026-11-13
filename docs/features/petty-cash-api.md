@@ -104,7 +104,7 @@ The day's report and what hangs off it - `report`, `share_link`, and on delete `
 | `petty_cash/tests/test_publish.py` | the publish (Flask's `test_report_publish_state.py`, `test_xero_report_republish.py`, `test_xero_expense_receipts.py`, restated against a fake Xero): the start and each refusal, the lock, the re-sync; a whole day's payloads and records, personal withdrawal and over count, the currency, a refused line's reason, a selective re-publish, a rejected token, a worker with no token, a crash, a republish updating in place, an org switch, the sweep, receipts unchanged or replaced, a lost supplier; and the status (publishing, failed with its reasons, in Xero, another company's) |
 | `petty_cash/tests/test_expense_extract.py` | the receipt reader (the route's refusals and silent reasons, the context sent, the reply checks, the one log line, `expense_ai_check`), the model a stand-in |
 | `petty_cash/tests/test_deposit_correction.py` | the correction (Flask's `test_report_deposit_change.py` and the home tests, restated on real rows): the day and the next draft recalculated, no deposit, the counted difference, a larger deposit, unmapped accounts, no report, every refused body, a cashier; in Xero the reversal and replacement payloads and the publish record, no deposit, a match by amount, no match, a refused reversal or replacement (Xero's text never shown), no token, an unexpected failure |
-| `petty_cash/tests/test_xero_settings.py` | the Xero cards (Flask's `test_petty_cash_api_xero_settings.py` and `test_xero_mapping_state.py`, restated on real rows): the lists once live, not live (revoked in Xero, no token, never connected), the 503, the sync's assertion and a failed sync, the mapping saved and read back and each refusal, a choice by id or code, a no-longer-active saved choice still offered, the codes rule, a cashier and a base member |
+| `petty_cash/tests/test_xero_settings.py` | the Xero cards (Flask's `test_petty_cash_api_xero_settings.py` and `test_xero_mapping_state.py`, restated on real rows): the lists once live, not live (revoked in Xero, no token, never connected), the 503, the sync's assertion and a failed sync, the mapping saved and read back and each refusal, a choice by id or code, a no-longer-active saved choice still offered, a saved account archived in Xero shown and marked `archived` (live and not), the codes rule, a cashier and a base member |
 | `petty_cash/tests/test_settings.py` | the read and its permissions, the removed country save, adding / renaming / removing / ordering methods, the shared-rename and taken-name refusals, the name limits |
 | `petty_cash/tests/test_history.py` | the list, every status filter, paging, each refused filter, and the failed rows' reasons (worked out here, Flask never asked) |
 | `petty_cash/tests/test_publish_reasons.py` | why a failed report didn't publish and whether each reason is fixed (`services/publish_reasons.py`): the stored items (JSON items, plain strings, the legacy `publish_failed:` action, the newest row only), an expense line's contact asked of live Xero once per contact (the synced table when Xero or the token service can't answer) and its account (a known inactive one keeps it open), a removed line, a legacy row's line found by name, a company-wide reason's stored or inferred deps, another company's report left out |
@@ -137,10 +137,16 @@ until then they were asked of Flask's `POST /api/internal/xero/publish-reasons`.
   strings, or the reason in the action (`publish_failed: ...`).
 - **An expense line's reason** is fixed when every line it names has an ACTIVE contact and an
   account that is not known to be inactive. A removed line counts as fixed; an unknown code is not
-  held against the person. A text-only row finds its line by the name in `Expense '<item>'`.
+  held against the person. A text-only row finds its line by the name in `Expense '<item>'`. Every
+  expense posts into the petty cash account, so a mapped one that is no longer ACTIVE holds the
+  reason open too (2026-11-13).
 - **A company-wide reason** re-checks its `deps`: an account role mapped to an ACTIVE `account_info`
   row, or a contact role mapped to an active contact. A legacy reason infers its deps from its
   wording (cash sale, discrepancy, deposit, withdrawal/director). Anything else stays unresolved.
+  The discrepancy posts into the petty cash account, which its deps lacked until 2026-11-13 (a
+  Discrepancy read fixed while every publish of it failed). So a stored item's deps are joined with
+  what its step uses now (`MODULE_FIXED_DEPS`: discrepancy, deposit, cash sales; withdrawal varies
+  by who added the cash, so it keeps its stored deps).
 - **Contacts are asked of live Xero** (`GET /Contacts/{id}` with the token from accounts-api's token
   service), once per contact per answer. When Xero or the token service can't answer, the synced
   `xero_contact_sync` table answers instead.

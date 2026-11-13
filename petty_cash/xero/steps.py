@@ -34,7 +34,7 @@ logger = logging.getLogger("petty-cash-api")
 
 # What each company-wide step depends on (the reasons' re-check): [kind, role].
 DEPS_CASH_SALES = [["contact", "cashsale_contact"], ["account", "cash_sale"]]
-DEPS_DISCREPANCY = [["contact", "discrepancy_contact"], ["account", "discrepancy_account"]]
+DEPS_DISCREPANCY = [["contact", "discrepancy_contact"], ["account", "discrepancy_account"], ["account", "pettycash"]]
 DEPS_DEPOSIT = [["account", "pettycash"], ["account", "bank"]]
 DEPS_WITHDRAWAL_PERSONAL = [["contact", "director_contact"], ["account", "director"], ["account", "pettycash"]]
 DEPS_WITHDRAWAL_COMPANY = [["account", "bank"], ["account", "pettycash"]]

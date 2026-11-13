@@ -252,6 +252,23 @@ def test_a_saved_choice_no_longer_active_is_still_offered(client, lists, xero):
     assert _field(body, "owners_account")["selected"] == "acc-owner"
 
 
+@pytest.mark.parametrize("live", [True, False], ids=["live", "without-xero"])
+def test_a_saved_account_archived_in_xero_is_shown_and_marked(client, lists, xero, live):
+    """2026-11-13: a Petty Cash Account archived in Xero read as an ordinary "Petty Cash", and
+    every publish failed on it. It stays selected, marked, so the person knows to choose again."""
+    call(client, lists, "put", "/settings/xero/mapping", MAPPING)
+    AccountInfo.objects.filter(xero_account_id="acc-pc").update(status="ARCHIVED")
+    xero.listed = live
+
+    body = call(client, lists, "get", "/settings/xero").json()
+    assert body["live"] is live
+    main_bank = _field(body, "main_bank")
+    assert main_bank["selected"] == "acc-pc" and main_bank["archived"] is True
+    assert "acc-pc" in {o["id"] for o in main_bank["options"]}
+    assert _field(body, "deposit_bank")["archived"] is False
+    assert "archived" not in _field(body, "cashsale_contact")
+
+
 def test_an_account_is_chosen_by_its_id_or_its_code(client, lists, xero):
     resp = call(client, lists, "put", "/settings/xero/mapping", {**MAPPING, "cashsale_account": "200"})
     assert resp.status_code == 200
