@@ -87,7 +87,7 @@ def test_the_close_read_brings_the_day_as_submit_will_post_it(client, shop, note
     assert len(body["sales"]["history"]) == 30 and body["sales"]["history"][-1]["date"] == D3.isoformat()
     assert body["expenses"]["total"] == 15
     assert body["expenses"]["lines"][0] | {"id": None} == {"id": None, "item": "Advertising", "supplier": "",
-                                                            "remarks": "", "amount": 15, "receipts": 0}
+                                                            "description": "", "amount": 15, "receipts": 0}
     assert body["cash"] == {"bank_deposit": 100, "expected": 55, "counted": 55, "safe_box": 0,
                             "difference": {"amount": 0, "kind": "none", "reason": ""}}
     assert body["closing_balance"] == 55

@@ -231,7 +231,7 @@ def edit_report_withdrawal(request, report_id: str):
 
 @router.patch("/reports/{report_id}/expense-lines/{line_id}")
 def edit_report_line(request, report_id: str, line_id: str):
-    """multipart: ``remarks``, ``supplier_id``, ``account_id`` (each only when it changes) and one
+    """multipart: ``description``, ``supplier_id``, ``account_id`` (each only when it changes) and one
     ``receipt`` that replaces the line's."""
     line, line_report = _company_line(request.company.id, line_id)
     if line is None or str(line_report.id) != str(report_id):
@@ -242,7 +242,7 @@ def edit_report_line(request, report_id: str, line_id: str):
         raise Refused("Attach one receipt per expense.", 422)
     report = _report(request, report_id)
     return _edit(request, report, lambda r: edit_expense_line(
-        r, line, request.auth_user, remarks=form.get("remarks") if "remarks" in form else None,
+        r, line, request.auth_user, description=form.get("description") if "description" in form else None,
         supplier_id=form.get("supplier_id") or None, account_id=form.get("account_id") or None, receipts=receipts,
     ))
 

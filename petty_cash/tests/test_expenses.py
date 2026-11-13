@@ -91,7 +91,7 @@ def _get(client, shop, user=None, day=D3):
 
 
 def _add(client, shop, user=None, **over):
-    form = {"transaction_date": D3.isoformat(), "amount": "1,012.50", "remarks": "Flyers",
+    form = {"transaction_date": D3.isoformat(), "amount": "1,012.50", "description": "Flyers",
             "supplier_id": "con-0001", "account_id": "acc-0001", "receipt": PNG}
     form.update(over)
     receipt = form.pop("receipt")
@@ -103,7 +103,7 @@ def _add(client, shop, user=None, **over):
 def _line(shop, draft, s3, amount="1012.50", *, receipt=JPEG, name="till-slip.jpg"):
     """A stored line as an earlier add left it."""
     line = ReportExpense.objects.create(
-        report_id=draft.id, item="Advertising", amount=Decimal(amount), remarks="Flyers",
+        report_id=draft.id, item="Advertising", amount=Decimal(amount), description="Flyers",
         account_id=AccountInfo.objects.get(xero_account_id="acc-0001").id,
         contact_id=XeroContactSync.objects.get(xero_contact_id="con-0001").id,
     )
@@ -133,7 +133,7 @@ def test_the_page_brings_the_lines_and_what_a_line_may_use(client, shop, lists, 
     assert body["total"] == 1012.5
     [only] = body["lines"]
     assert only["id"] == str(line.id) and only["item"] == "Advertising" and only["amount"] == 1012.5
-    assert only["remarks"] == "Flyers"
+    assert only["description"] == "Flyers"
     assert only["supplier"] == {"id": "con-0001", "name": "ABC Supplies"}
     assert only["account"] == {"id": "acc-0001", "code": "400", "name": "Advertising"}
     assert [(r["name"], r["mime_type"]) for r in only["receipts"]] == [("till-slip.jpg", "image/jpeg")]
@@ -175,7 +175,7 @@ def test_a_line_is_stored_with_its_receipt_as_its_bytes_say(client, shop, lists,
     assert row.expense_total == Decimal("1012.50")
     assert row.closing_balance == Decimal("100") + 20 + 50 - Decimal("1012.50") - 5
     line = ReportExpense.objects.get(report_id=draft.id)
-    assert line.item == "Advertising" and line.remarks == "Flyers"
+    assert line.item == "Advertising" and line.description == "Flyers"
     assert line.contact_id == XeroContactSync.objects.get(xero_contact_id="con-0001").id
     assert line.account_id == AccountInfo.objects.get(xero_account_id="acc-0001").id
     [key] = s3.objects
@@ -202,7 +202,7 @@ def test_a_large_receipt_is_stored_exactly_as_uploaded(client, shop, lists, s3):
     _draft(shop)
     png = _big_png()
     assert len(png) > 1024 * 1024
-    form = {"transaction_date": D3.isoformat(), "amount": "12.40", "remarks": "Flyers",
+    form = {"transaction_date": D3.isoformat(), "amount": "12.40", "description": "Flyers",
             "supplier_id": "con-0001", "account_id": "acc-0001",
             "receipt": SimpleUploadedFile("big-slip.png", png, content_type="image/png")}
 
@@ -231,7 +231,7 @@ def test_two_lines_alike_keep_their_own_receipts(client, shop, lists, s3):
     ({"amount": "-5"}, "Enter the amount as a number above 0"),
     ({"amount": "twelve"}, "Enter the amount as a number above 0"),
     ({"amount": "100000000000"}, "up to 99,999,999,999.99"),
-    ({"remarks": "x" * 301}, "Keep the description to 300 characters or fewer."),
+    ({"description": "x" * 301}, "Keep the description to 300 characters or fewer."),
     ({"supplier_id": "con-unknown"}, "Choose a supplier from the list."),
     ({"supplier_id": ""}, "Choose a supplier from the list."),
     ({"account_id": "acc-0002"}, "Choose an account code from the list."),  # switched off
@@ -399,14 +399,14 @@ def test_a_draft_line_is_changed_in_place_and_the_totals_follow(client, shop, li
     line, attachment = _line(shop, draft, s3, "10.00")
     _line(shop, draft, s3, "15.00")
 
-    resp = _edit(client, shop, line.id, amount="1,234.50", remarks="  Posters ", supplier_id="con-0002",
+    resp = _edit(client, shop, line.id, amount="1,234.50", description="  Posters ", supplier_id="con-0002",
                  account_id="acc-0003")
 
     assert resp.status_code == 200, resp.content
     body = resp.json()
     assert body["total"] == 1249.5
     assert body["line"] == {
-        "id": str(line.id), "item": "Printing", "amount": 1234.5, "remarks": "Posters",
+        "id": str(line.id), "item": "Printing", "amount": 1234.5, "description": "Posters",
         "supplier": {"id": "con-0002", "name": "Taxi Co"},
         "account": {"id": "acc-0003", "code": "461", "name": "Printing"},
         "receipts": [{"id": str(attachment.id), "name": "till-slip.jpg", "mime_type": "image/jpeg"}],
@@ -423,11 +423,11 @@ def test_fields_not_sent_stay_and_an_empty_description_clears(client, shop, list
     draft = _draft(shop)
     line, _ = _line(shop, draft, s3, "10.00")
 
-    resp = _edit(client, shop, line.id, remarks="")
+    resp = _edit(client, shop, line.id, description="")
 
     assert resp.status_code == 200
     changed = resp.json()["line"]
-    assert changed["remarks"] == "" and changed["amount"] == 10.0 and changed["item"] == "Advertising"
+    assert changed["description"] == "" and changed["amount"] == 10.0 and changed["item"] == "Advertising"
     assert changed["supplier"] == {"id": "con-0001", "name": "ABC Supplies"}
 
 
@@ -479,13 +479,13 @@ def test_a_receipt_can_be_removed_but_never_the_last_one(client, shop, lists, s3
     ({"amount": ""}, "Enter the amount as a number above 0"),
     ({"amount": "twelve"}, "Enter the amount as a number above 0"),
     ({"amount": "100000000000"}, "up to 99,999,999,999.99"),
-    ({"remarks": "x" * 301}, "Keep the description to 300 characters or fewer."),
+    ({"description": "x" * 301}, "Keep the description to 300 characters or fewer."),
     ({"supplier_id": "con-unknown"}, "Choose a supplier from the list."),
     ({"account_id": "acc-0002"}, "Choose an account code from the list."),  # switched off
     ({"receipt": b"GIF89a-not-allowed"}, "Attach a PDF, JPEG or PNG file."),
     ({"receipt": b""}, "That file is empty. Attach the receipt again."),
     ({"receipt": b"%PDF" + b"0" * (10 * 1024 * 1024)}, "Attach a file of 10 MB or less."),
-], ids=["zero", "negative", "empty", "words", "too-much", "remarks", "supplier", "account", "gif", "no-bytes",
+], ids=["zero", "negative", "empty", "words", "too-much", "description", "supplier", "account", "gif", "no-bytes",
         "too-big"])
 def test_bad_input_for_an_edit_is_a_422_and_nothing_changes(client, shop, lists, s3, over, message):
     draft = _draft(shop)

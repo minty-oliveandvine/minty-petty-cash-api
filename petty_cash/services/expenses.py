@@ -146,7 +146,7 @@ def _attachment_for(key: str, *, original_name: str, mime_type: str, file_size: 
     )
 
 
-def add_expense(report: Report, user, *, amount: Decimal, remarks: str, supplier: XeroContactSync,
+def add_expense(report: Report, user, *, amount: Decimal, description: str, supplier: XeroContactSync,
                 account: AccountInfo, receipt: bytes, receipt_mime: str, receipt_name: str) -> ReportExpense:
     """Store one line on ``report`` with its receipt, recompute the totals, log it. The receipt is
     uploaded first; if the rows then fail, the upload is deleted again."""
@@ -155,7 +155,7 @@ def add_expense(report: Report, user, *, amount: Decimal, remarks: str, supplier
     amount = cents(amount)
     item = account.name
     key, stored_mime, stored_size = storage.upload_receipt(
-        receipt, receipt_mime, report, filename=receipt_name, description=item or remarks or "EXPENSE",
+        receipt, receipt_mime, report, filename=receipt_name, description=item or description or "EXPENSE",
         amount=amount,
     )
     try:
@@ -164,7 +164,7 @@ def add_expense(report: Report, user, *, amount: Decimal, remarks: str, supplier
             if locked.status != ReportStatus.DRAFT:
                 raise ExpenseRefused(NOT_A_DRAFT)
             line = ReportExpense.objects.create(
-                report_id=locked.id, item=item, amount=amount, remarks=remarks,
+                report_id=locked.id, item=item, amount=amount, description=description,
                 account_id=account.id, contact_id=supplier.id,
             )
             attachment = _attachment_for(key, original_name=receipt_name, mime_type=stored_mime,
@@ -232,7 +232,7 @@ def _remove_receipts(row: ReportExpense, remove: set[str]) -> None:
 KEEP_A_RECEIPT = "Every expense needs its receipt. Attach a new receipt before removing the last one."
 
 
-def update_expense(report: Report, line: ReportExpense, user, *, amount: Decimal, remarks: str,
+def update_expense(report: Report, line: ReportExpense, user, *, amount: Decimal, description: str,
                    supplier: XeroContactSync | None, account: AccountInfo | None, receipt=None,
                    remove_receipt_ids=()) -> ReportExpense:
     """Change a line of a DRAFT in place (Flask's ``update_expense``): the amount and description as
@@ -255,7 +255,7 @@ def update_expense(report: Report, line: ReportExpense, user, *, amount: Decimal
         if receipt is not None:
             data, mime, name = receipt
             key, stored_mime, stored_size = storage.upload_receipt(
-                data, mime, report, filename=name, description=item or remarks or "EXPENSE", amount=amount,
+                data, mime, report, filename=name, description=item or description or "EXPENSE", amount=amount,
             )
             uploaded.append((key, stored_mime, name, stored_size))
         with transaction.atomic():
@@ -263,8 +263,8 @@ def update_expense(report: Report, line: ReportExpense, user, *, amount: Decimal
             if locked.status != ReportStatus.DRAFT:
                 raise ExpenseRefused(NOT_A_DRAFT)
             row = ReportExpense.objects.select_for_update().get(id=line.id)
-            row.item, row.amount, row.remarks = item, amount, remarks
-            fields = ["item", "amount", "remarks"]
+            row.item, row.amount, row.description = item, amount, description
+            fields = ["item", "amount", "description"]
             if supplier is not None:
                 row.contact_id = supplier.id
                 fields.append("contact_id")

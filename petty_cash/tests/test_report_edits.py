@@ -38,7 +38,7 @@ def day(client, shop, notes, lists, s3):  # noqa: F811
     assert _submit(client, shop).status_code == 200
     line = ReportExpense.objects.get(report_id=report.id)
     ReportExpense.objects.filter(id=line.id).update(
-        remarks="Flyers", account_id=AccountInfo.objects.get(xero_account_id="acc-0001").id,
+        description="Flyers", account_id=AccountInfo.objects.get(xero_account_id="acc-0001").id,
         contact_id=XeroContactSync.objects.get(xero_contact_id="con-0001").id,
     )
     s3.objects[OLD_KEY] = PNG
@@ -135,9 +135,9 @@ def test_fixed_a_draft_or_a_report_being_published_keeps_its_details(client, sho
     body = _get(client, shop, report.id).json()
     assert body["permissions"]["edit_details"] is False and body["options"] is None
     for resp in (_reason(client, shop, report.id, "new"), _withdrawal(client, shop, report.id, "company"),
-                 _edit_line(client, shop, report.id, line.id, remarks="Posters", receipt=_file("new.png", PNG))):
+                 _edit_line(client, shop, report.id, line.id, description="Posters", receipt=_file("new.png", PNG))):
         assert resp.status_code == 409 and resp.json() == {"error": message}
-    assert _row(report).discrepancy_reason == "old" and _line(line).remarks == "Flyers"
+    assert _row(report).discrepancy_reason == "old" and _line(line).description == "Flyers"
     assert set(s3.objects) == {OLD_KEY}  # nothing uploaded for a refused edit
 
 
@@ -151,7 +151,7 @@ def test_someone_without_the_right_is_refused(client, shop, day):
     refused = "It looks like you don't have permission to edit this report."
     for resp in (_reason(client, shop, report.id, "new", user=boss),
                  _withdrawal(client, shop, report.id, "company", user=boss),
-                 _edit_line(client, shop, report.id, line.id, user=boss, remarks="Posters")):
+                 _edit_line(client, shop, report.id, line.id, user=boss, description="Posters")):
         assert resp.status_code == 403 and resp.json() == {"error": refused}
 
 
@@ -237,11 +237,11 @@ def test_a_line_s_details_change_and_its_amount_does_not(client, shop, day):
     report, line = day
     _set(report, xero_integrated=True, publishing_status="completed")
 
-    resp = _edit_line(client, shop, report.id, line.id, remarks="Posters", supplier_id="con-0002", amount="99")
+    resp = _edit_line(client, shop, report.id, line.id, description="Posters", supplier_id="con-0002", amount="99")
 
     assert resp.status_code == 200, resp.json()
     [shown] = resp.json()["expenses"]["lines"]
-    assert (shown["remarks"], shown["supplier"], shown["amount"]) == (
+    assert (shown["description"], shown["supplier"], shown["amount"]) == (
         "Posters", {"id": "con-0002", "name": "Taxi Co"}, 15)
     row = _line(line)
     assert row.contact_id == XeroContactSync.objects.get(xero_contact_id="con-0002").id and row.amount == 15
@@ -258,7 +258,7 @@ def test_fixed_a_new_account_renames_the_line(client, shop, day):
     resp = _edit_line(client, shop, report.id, line.id, account_id="acc-0003")
 
     assert resp.status_code == 200, resp.json()
-    assert (_line(line).item, _line(line).account_id, _line(line).remarks) == ("Bank Fees", fees.id, "Flyers")
+    assert (_line(line).item, _line(line).account_id, _line(line).description) == ("Bank Fees", fees.id, "Flyers")
     assert resp.json()["expenses"]["lines"][0]["account"] == {"id": "acc-0003", "code": "404", "name": "Bank Fees"}
 
 
@@ -266,7 +266,7 @@ def test_fixed_a_new_account_renames_the_line(client, shop, day):
     ({"account_id": "acc-elsewhere"}, "Choose an account code from the list."),
     ({"account_id": "acc-0002"}, "Choose an account code from the list."),  # switched off for Petty Cash
     ({"supplier_id": "con-elsewhere"}, "Choose a supplier from the list."),
-    ({"remarks": "x" * 301}, "Keep the description to 300 characters or fewer."),
+    ({"description": "x" * 301}, "Keep the description to 300 characters or fewer."),
 ])
 def test_fixed_an_account_or_supplier_must_be_the_company_s(client, shop, day, form, message):
     report, line = day
@@ -277,7 +277,7 @@ def test_fixed_an_account_or_supplier_must_be_the_company_s(client, shop, day, f
 
     assert resp.status_code == 422 and resp.json() == {"error": message}
     row = _line(line)
-    assert (row.item, row.remarks, row.contact_id) == (
+    assert (row.item, row.description, row.contact_id) == (
         "Advertising", "Flyers", XeroContactSync.objects.get(xero_contact_id="con-0001").id)
 
 
@@ -353,10 +353,10 @@ def test_a_failed_edit_keeps_the_old_receipt_and_removes_the_new_upload(client, 
 
     monkeypatch.setattr("petty_cash.services.report_edits.mark_diverged_from_xero", fail)
     with django_capture_on_commit_callbacks(execute=True):
-        resp = _edit_line(client, shop, report.id, line.id, remarks="Posters", receipt=_file("new.png", PNG))
+        resp = _edit_line(client, shop, report.id, line.id, description="Posters", receipt=_file("new.png", PNG))
 
     assert resp.status_code == 500
-    assert _keys(line) == [OLD_KEY] and _line(line).remarks == "Flyers"
+    assert _keys(line) == [OLD_KEY] and _line(line).description == "Flyers"
     assert set(s3.objects) == {OLD_KEY}  # the new upload went again, the old file stayed
 
 
@@ -368,9 +368,9 @@ def test_an_expense_line_of_another_report_or_company_is_not_found(client, shop,
 
     for report_id, line_id in ((older.id, line.id), (report.id, uuid.uuid4()), (report.id, "nope"),
                                (report.id, their_line.id), (theirs.id, their_line.id)):
-        resp = _edit_line(client, shop, report_id, line_id, remarks="x")
+        resp = _edit_line(client, shop, report_id, line_id, description="x")
         assert resp.status_code == 404 and resp.json() == {"error": "Hmm, I couldn't find that expense."}
-    assert _line(line).remarks == "Flyers"
+    assert _line(line).description == "Flyers"
 
 
 # --- the history (2026-11-03) ---------------------------------------------------------------------------
@@ -409,7 +409,7 @@ def test_a_line_s_new_details_are_in_the_history(client, shop, day):
 
     report, line = day
 
-    assert _edit_line(client, shop, report.id, line.id, remarks="Posters", supplier_id="con-0002",
+    assert _edit_line(client, shop, report.id, line.id, description="Posters", supplier_id="con-0002",
                       receipt=_file("new.png", JPEG)).status_code == 200
 
     [row] = ReportHistory.objects.filter(report_id=report.id, field_changed=f"expense_{line.id}")

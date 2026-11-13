@@ -41,7 +41,7 @@ def _expense_lines(report_id) -> list[dict]:
         if attachment_id in stored:
             receipts[line_id] = receipts.get(line_id, 0) + 1
     return [
-        {"id": str(r.id), "item": r.item, "contact_name": contacts.get(r.contact_id), "remarks": r.remarks,
+        {"id": str(r.id), "item": r.item, "contact_name": contacts.get(r.contact_id), "description": r.description,
          "amount": r.amount or 0, "receipts": receipts.get(r.id, 0)}
         for r in rows
     ]

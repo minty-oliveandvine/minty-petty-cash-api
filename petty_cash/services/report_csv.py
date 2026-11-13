@@ -122,9 +122,9 @@ def movements(entity_id, reports) -> list[list[str]]:
             row((codes["director"] if from_owner else petty) or "", report.cash_addition,
                 "Cash Addition/Withdrawal From (Start)")
         for line in lines.get(str(report.id), []):
-            remarks = line.remarks
+            description = line.description
             row(line.account_code or "N/A", -(line.amount or 0),
-                "Expense" if remarks in ("No description", "-") else remarks or "Expense")
+                "Expense" if description in ("No description", "-") else description or "Expense")
         if report.cashsale_total and report.cashsale_total > 0:
             row(codes.get("cash_sale", ""), report.cashsale_total, "Cash Sale (Pettycash)")
         if report.bank_deposit and report.bank_deposit > 0:

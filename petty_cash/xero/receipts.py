@@ -119,7 +119,7 @@ def attach_receipt(run, line, transaction_id: str) -> bool:
     if not key:
         logger.info("Publish: line %s has no receipt", line.id)
         return False
-    name = (safe_stem(line.remarks or line.item) or "RECEIPT") + "." + key.split(".")[-1]
+    name = (safe_stem(line.description or line.item) or "RECEIPT") + "." + key.split(".")[-1]
     try:
         data = storage.read_receipt(key, RECEIPT_LIMIT)
     except Exception as exc:  # the bucket's own errors are many; the transaction stands

@@ -85,7 +85,7 @@
         ]
       },
       "patch": {
-        "description": "A line of this company's DRAFT, in place - multipart, each field only when it changes:\n``amount``, ``remarks``, ``supplier_id``, ``account_id``, one ``receipt`` that replaces the line's\nreceipts, ``remove_receipt_ids`` (repeatable) dropping some. Checked as adding is; a submitted\nreport's line is ``PATCH /reports/{id}/expense-lines/{id}``'s, so here it is a 409.",
+        "description": "A line of this company's DRAFT, in place - multipart, each field only when it changes:\n``amount``, ``description``, ``supplier_id``, ``account_id``, one ``receipt`` that replaces the line's\nreceipts, ``remove_receipt_ids`` (repeatable) dropping some. Checked as adding is; a submitted\nreport's line is ``PATCH /reports/{id}/expense-lines/{id}``'s, so here it is a 409.",
         "operationId": "petty_cash_routes_expenses_edit_expense_line",
         "parameters": [
           {
@@ -574,7 +574,7 @@
     },
     "/api/petty-cash/v1/companies/{entity_id}/reports/{report_id}/expense-lines/{line_id}": {
       "patch": {
-        "description": "multipart: ``remarks``, ``supplier_id``, ``account_id`` (each only when it changes) and one\n``receipt`` that replaces the line's.",
+        "description": "multipart: ``description``, ``supplier_id``, ``account_id`` (each only when it changes) and one\n``receipt`` that replaces the line's.",
         "operationId": "petty_cash_routes_report_edit_report_line",
         "parameters": [
           {

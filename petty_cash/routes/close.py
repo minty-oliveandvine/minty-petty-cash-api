@@ -120,7 +120,7 @@ def close_page(request):
         },
         "expenses": {
             "lines": [{"id": e["id"], "item": e["item"] or "", "supplier": e["contact_name"] or "",
-                       "remarks": e["remarks"] or "", "amount": out(e["amount"]), "receipts": e["receipts"]}
+                       "description": e["description"] or "", "amount": out(e["amount"]), "receipts": e["receipts"]}
                       for e in lines],
             "total": out(sum((cents(e["amount"]) for e in lines), Decimal("0.00"))),
         },

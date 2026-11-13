@@ -202,7 +202,7 @@ def _line(shop, report, item, amount, *, code="429", contact="con-sup", receipt=
     supplier = (XeroContactSync.objects.filter(entity_id=shop.entity.id, xero_contact_id=contact).first()
                 or XeroContactSync.objects.create(entity_id=shop.entity.id, xero_contact_id=contact, name="ABC Supplies"))
     line = ReportExpense.objects.create(report_id=report.id, item=item, amount=amount, account_id=account.id,
-                                        contact_id=supplier.id, remarks=f"{item} receipt")
+                                        contact_id=supplier.id, description=f"{item} receipt")
     if receipt:
         attachment = Attachment.objects.create(id=uuid.uuid4(), original_name="r.png", stored_name="r.png",
                                                file_path=receipt, file_extension="png")
@@ -360,12 +360,13 @@ def test_a_whole_day_goes_into_xero_and_the_report_reads_published(mapped, xero)
                                                     "UnitAmount": 200.0, "AccountCode": "200", "TaxType": "NONE",
                                                     "LineAmount": 200.0}]
 
+    # Each expense line's description in Xero is what the person typed, not the account name.
     by_item = {b["bankTransactions"][0]["lineItems"][0]["description"]: b for b in xero.sent("POST", "BankTransactions")}
-    coffee, taxi, short = by_item["Coffee"], by_item["Taxi"], by_item["Short by 5"]
+    coffee, taxi, short = by_item["Coffee receipt"], by_item["Taxi receipt"], by_item["Short by 5"]
     assert coffee["bankTransactions"][0] == {
         "type": "SPEND", "Date": D3.isoformat(), "bankAccount": {"accountID": "acc-091"},
         "Reference": f"MT{D3:%Y%m%d}Expense", "contact": {"contactID": "con-sup"},
-        "lineItems": [{"description": "Coffee", "unitAmount": 10.0, "accountCode": "429", "taxType": "NONE"}]}
+        "lineItems": [{"description": "Coffee receipt", "unitAmount": 10.0, "accountCode": "429", "taxType": "NONE"}]}
     assert taxi["bankTransactions"][0]["lineItems"][0]["unitAmount"] == 20.0
     assert short["bankTransactions"][0]["type"] == "SPEND"
     assert short["bankTransactions"][0]["Reference"] == f"MT{D3:%Y%m%d}Discrepancy"
@@ -376,11 +377,24 @@ def test_a_whole_day_goes_into_xero_and_the_report_reads_published(mapped, xero)
     assert set(record["objects"]) == {"withdrawal_from", "invoices", "expenses", "deposit", "discrepancy"}
     assert set(record["objects"]["expenses"]) == {str(first.id), str(second.id)}
     assert record["org"] == ORG
-    # Each line's receipt, named after its remarks (``safe_stem``, as Flask names it), on its own transaction.
+    # Each line's receipt, named after its description (``safe_stem``, as Flask names it), on its own transaction.
     assert sorted(b[0] for m, p, b in xero.calls if (m, p) == ("POST", "Files")) == ["COFFEE_RECEIPT.png",
                                                                                     "TAXI_RECEIPT.png"]
     assert sorted(b["ObjectId"] for m, p, b in xero.calls if m == "POST" and p.endswith("/Associations")) == sorted(
         [record_ids["expenses"][str(first.id)]["id"], record_ids["expenses"][str(second.id)]["id"]])
+
+
+@pytest.mark.parametrize("description", ["", None, "   ", "No description", "-"])
+def test_a_line_with_no_description_goes_into_xero_under_its_account_name(mapped, xero, description):
+    report = _report(mapped, expense_total=10)
+    line = _line(mapped, report, "Staff Welfare", 10)
+    ReportExpense.objects.filter(id=line.id).update(description=description)
+    Report.objects.filter(id=report.id).update(publishing_status="publishing")
+
+    _run(mapped, report)
+
+    sent, = xero.sent("POST", "BankTransactions")
+    assert sent["bankTransactions"][0]["lineItems"][0]["description"] == "Staff Welfare"
 
 
 def test_an_over_count_receives_and_a_personal_withdrawal_names_the_director(mapped, xero):
@@ -424,7 +438,7 @@ def test_a_refused_line_fails_the_publish_with_its_reason_and_the_rest_is_record
 
     def second_refused(method, url, body, real=xero.request):
         path = xero._path(url)
-        if path == "BankTransactions" and body["bankTransactions"][0]["lineItems"][0]["description"] == "Taxi":
+        if path == "BankTransactions" and body["bankTransactions"][0]["lineItems"][0]["description"] == "Taxi receipt":
             xero.calls.append((method, path, body))
             calls["n"] += 1
             return _Response(400, {"Elements": [{"ValidationErrors": [{"Message": "The contact is archived"}]}]})
@@ -451,7 +465,7 @@ def test_a_selective_re_publish_retries_only_what_failed(mapped, xero):
     _run(mapped, report, prior="failed")
 
     assert [b["bankTransactions"][0]["lineItems"][0]["description"] for b in xero.sent("POST", "BankTransactions")] == [
-        "Taxi"]
+        "Taxi receipt"]
     assert xero.sent("PUT", "Invoices") == [] and xero.sent("POST", "BankTransfers") == []
 
 

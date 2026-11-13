@@ -43,7 +43,7 @@ from petty_cash.services.reports import log_history
 logger = logging.getLogger("petty-cash-api")
 
 MAX_REASON = 300
-MAX_REMARKS = 300
+MAX_DESCRIPTION = 300
 WITHDRAWAL_TYPES = ("personal", "company")
 NO_RIGHT = "It looks like you don't have permission to edit this report."
 DRAFT = "This report is still a draft. Change it in the Daily Closing."
@@ -132,13 +132,13 @@ def edit_withdrawal(report: Report, user, kind) -> str:
     return kind
 
 
-def _line_changes(row: ReportExpense, remarks, supplier, account, uploaded) -> tuple[list[str], list[str]]:
+def _line_changes(row: ReportExpense, description, supplier, account, uploaded) -> tuple[list[str], list[str]]:
     """What an edit changes on a line, as (before, after) phrases for its history row - only the
     fields that really change."""
     was, now = [], []
-    if remarks is not None and remarks != (row.remarks or ""):
-        was.append(f"description {row.remarks or ''}".rstrip())
-        now.append(f"description {remarks}".rstrip())
+    if description is not None and description != (row.description or ""):
+        was.append(f"description {row.description or ''}".rstrip())
+        now.append(f"description {description}".rstrip())
     if supplier is not None and supplier.id != row.contact_id:
         old = XeroContactSync.objects.filter(id=row.contact_id).values_list("name", flat=True).first()
         was.append(f"supplier {old or 'none'}")
@@ -156,7 +156,7 @@ def _line_changes(row: ReportExpense, remarks, supplier, account, uploaded) -> t
     return was, now
 
 
-def edit_expense_line(report: Report, line: ReportExpense, user, *, remarks=None, supplier_id=None,
+def edit_expense_line(report: Report, line: ReportExpense, user, *, description=None, supplier_id=None,
                       account_id=None, receipts=()) -> None:
     """Change a submitted line's details - never its amount. ``None`` leaves a field as it is;
     ``supplier_id`` / ``account_id`` are Xero ids; ``receipts`` are uploaded files that replace the
@@ -164,10 +164,10 @@ def edit_expense_line(report: Report, line: ReportExpense, user, *, remarks=None
     check_editable(report, user)
     entity_id = report.entity_id
 
-    if remarks is not None:
-        remarks = str(remarks).strip()
-        if len(remarks) > MAX_REMARKS:
-            raise EditRefused(f"Keep the description to {MAX_REMARKS} characters or fewer.", 422)
+    if description is not None:
+        description = str(description).strip()
+        if len(description) > MAX_DESCRIPTION:
+            raise EditRefused(f"Keep the description to {MAX_DESCRIPTION} characters or fewer.", 422)
     supplier = account = None
     if supplier_id is not None:
         supplier = find_supplier(entity_id, supplier_id)
@@ -185,24 +185,24 @@ def edit_expense_line(report: Report, line: ReportExpense, user, *, remarks=None
             raise EditRefused(refused.message, 422) from None
 
     item = account.name if account is not None else line.item
-    description = item or (remarks if remarks is not None else line.remarks) or "EXPENSE"
+    label = item or (description if description is not None else line.description) or "EXPENSE"
     uploaded = []  # (key, stored mime, original name, stored size)
     try:
         for i, (data, mime, name) in enumerate(checked):
             key, stored_mime, stored_size = storage.upload_receipt(
-                data, mime, report, filename=name, description=description, amount=line.amount,
+                data, mime, report, filename=name, description=label, amount=line.amount,
                 file_index=i if len(checked) > 1 else None,
             )
             uploaded.append((key, stored_mime, name, stored_size))
         with transaction.atomic():
             locked = _locked(report, user)
             row = ReportExpense.objects.select_for_update().get(id=line.id)
-            was, now = _line_changes(row, remarks, supplier, account, uploaded)
+            was, now = _line_changes(row, description, supplier, account, uploaded)
             old_item = row.item
             fields = []
-            if remarks is not None:
-                row.remarks = remarks
-                fields.append("remarks")
+            if description is not None:
+                row.description = description
+                fields.append("description")
             if supplier is not None:
                 row.contact_id = supplier.id
                 fields.append("contact_id")

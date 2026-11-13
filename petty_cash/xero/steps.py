@@ -279,6 +279,13 @@ def cash_sales(run: Run, report: Report, amount, existing) -> tuple[int, int]:
         return 0, 1
 
 
+def _line_description(line: ReportExpense) -> str | None:
+    """The expense's description in Xero: what the person typed; the account name
+    (``item``) only when they typed nothing, or a placeholder (the CSV export's rule)."""
+    description = (line.description or "").strip()
+    return line.item if description in ("", "No description", "-") else description
+
+
 def expenses(run: Run, report: Report, existing: dict, only_ids=None) -> tuple[int, int]:
     """One spend transaction per expense line, each with its receipt. ``only_ids``: a selective
     re-publish's lines (the ones that failed last time)."""
@@ -307,7 +314,7 @@ def expenses(run: Run, report: Report, existing: dict, only_ids=None) -> tuple[i
                 made = bank_transaction(
                     run, report.transaction_date, kind="SPEND", purpose="expense", contact_id=xero_contact,
                     bank_account_id=petty,
-                    line_items=[{"description": line.item, "unitAmount": _amount(line.amount),
+                    line_items=[{"description": _line_description(line), "unitAmount": _amount(line.amount),
                                  "accountCode": (line.account.xero_code if line.account else None) or "200",
                                  "taxType": "NONE"}],
                     label=label, meta=meta, existing_id=(existing or {}).get(str(line.id)), line=line,

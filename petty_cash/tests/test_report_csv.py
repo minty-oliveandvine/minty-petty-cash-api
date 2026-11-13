@@ -58,9 +58,9 @@ def books(shop):
         return make_report(entity, D3 - timedelta(days=days_back), status=status, created_by=shop.owner.id,
                            opening_balance=0, closing_balance=0, **fields)
 
-    def line(row, minutes, item, amount, remarks, account=None):
+    def line(row, minutes, item, amount, description, account=None):
         ReportExpense.objects.create(id=uuid.uuid4(), report_id=row.id, item=item, amount=Decimal(str(amount)),
-                                     remarks=remarks, account_id=account.id if account else None,
+                                     description=description, account_id=account.id if account else None,
                                      created_at=base + timedelta(minutes=minutes))
 
     draft = report(2, status="draft", cashsale_total=99)

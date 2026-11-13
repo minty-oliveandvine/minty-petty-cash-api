@@ -2,7 +2,7 @@
 
 - ``GET /reports/expenses?transaction_date=``: the day's draft, its lines and total, the suppliers
   and accounts a line may use. No draft is 409 ``{error, to: "opening"}``.
-- ``POST /reports/expenses/lines`` (multipart): ``transaction_date, amount, remarks, supplier_id,
+- ``POST /reports/expenses/lines`` (multipart): ``transaction_date, amount, description, supplier_id,
   account_id`` and one ``receipt`` - every field checked here: an amount above 0 and up to the
   maximum, a supplier and an account from the lists above, a description of at most 300
   characters, one PDF / JPEG / PNG of at most 10 MB judged by its bytes.
@@ -77,7 +77,7 @@ router = Router()
 NO_DRAFT = "I don't see a draft yet - let's start with the opening entry."
 NOT_FOUND = "Hmm, I couldn't find that expense."
 NO_FILE = "I couldn't find that file."
-MAX_REMARKS = 300
+MAX_DESCRIPTION = 300
 
 
 def _receipt_name(attachment: Attachment) -> str:
@@ -108,7 +108,7 @@ def lines_payload(rows) -> list[dict]:
                 "id": str(row.id),
                 "item": row.item or "",
                 "amount": out(row.amount),
-                "remarks": row.remarks or "",
+                "description": row.description or "",
                 "supplier": {"id": public_id(contact), "name": contact.name} if contact else None,
                 "account": (
                     {"id": public_id(account), "code": account.xero_code or "", "name": account.name}
@@ -177,9 +177,9 @@ def add_expense_line(request):
     amount = _amount(form.get("amount"))
     if amount is None:
         raise Refused(f"Enter the amount as a number above 0 and up to {MAX_AMOUNT:,.2f}.", 422)
-    remarks = (form.get("remarks") or "").strip()
-    if len(remarks) > MAX_REMARKS:
-        raise Refused(f"Keep the description to {MAX_REMARKS} characters or fewer.", 422)
+    description = (form.get("description") or "").strip()
+    if len(description) > MAX_DESCRIPTION:
+        raise Refused(f"Keep the description to {MAX_DESCRIPTION} characters or fewer.", 422)
     supplier = find_supplier(entity_id, form.get("supplier_id"))
     if supplier is None:
         raise Refused("Choose a supplier from the list.", 422)
@@ -192,7 +192,7 @@ def add_expense_line(request):
     if draft is None:
         raise Refused(NO_DRAFT, 409, to="opening")
     try:
-        line = add_expense(draft, request.auth_user, amount=amount, remarks=remarks, supplier=supplier,
+        line = add_expense(draft, request.auth_user, amount=amount, description=description, supplier=supplier,
                            account=account, receipt=data, receipt_mime=mime, receipt_name=name)
     except ExpenseRefused as refused:
         raise Refused(refused.message, 409) from None
@@ -229,7 +229,7 @@ def delete_expense_line(request, line_id: str):
 @router.patch("/expense-lines/{line_id}")
 def edit_expense_line(request, line_id: str):
     """A line of this company's DRAFT, in place - multipart, each field only when it changes:
-    ``amount``, ``remarks``, ``supplier_id``, ``account_id``, one ``receipt`` that replaces the line's
+    ``amount``, ``description``, ``supplier_id``, ``account_id``, one ``receipt`` that replaces the line's
     receipts, ``remove_receipt_ids`` (repeatable) dropping some. Checked as adding is; a submitted
     report's line is ``PATCH /reports/{id}/expense-lines/{id}``'s, so here it is a 409."""
     line, report = _company_line(request.company.id, line_id)
@@ -246,11 +246,11 @@ def edit_expense_line(request, line_id: str):
         amount = _amount(form.get("amount"))
         if amount is None:
             raise Refused(f"Enter the amount as a number above 0 and up to {MAX_AMOUNT:,.2f}.", 422)
-    remarks = line.remarks or ""
-    if "remarks" in form:
-        remarks = (form.get("remarks") or "").strip()
-        if len(remarks) > MAX_REMARKS:
-            raise Refused(f"Keep the description to {MAX_REMARKS} characters or fewer.", 422)
+    description = line.description or ""
+    if "description" in form:
+        description = (form.get("description") or "").strip()
+        if len(description) > MAX_DESCRIPTION:
+            raise Refused(f"Keep the description to {MAX_DESCRIPTION} characters or fewer.", 422)
     supplier = account = None
     if form.get("supplier_id"):
         supplier = find_supplier(entity_id, form.get("supplier_id"))
@@ -278,7 +278,7 @@ def edit_expense_line(request, line_id: str):
         raise Refused(KEEP_A_RECEIPT, 422)
 
     try:
-        line = update_expense(report, line, request.auth_user, amount=amount, remarks=remarks, supplier=supplier,
+        line = update_expense(report, line, request.auth_user, amount=amount, description=description, supplier=supplier,
                               account=account, receipt=receipt, remove_receipt_ids=remove)
     except ExpenseRefused as refused:
         raise Refused(refused.message, 409) from None
