@@ -37,7 +37,7 @@ def _range(days_back_start=2, days_back_end=0):
 @pytest.fixture
 def books(shop):
     """Two submitted days (the first published) and a draft before them. The lines: one with its
-    account and supplier, one whose rows are gone (the published names stand in) and typed nothing,
+    account and supplier, one whose account and supplier were deleted (the keys emptied; the published names stand in) and typed nothing,
     one on an account with a Minty code only and no supplier."""
     entity = shop.entity
     tape = AccountInfo.objects.create(id=uuid.uuid4(), entity_id=entity.id, type="EXPENSE", name="Tape",
@@ -60,7 +60,7 @@ def books(shop):
     first = report(1, created_by=shop.owner.id, xero_integrated=True, opening_balance=100, cash_addition=20,
                    cashsale_total=300, nocashsale_total=40, expense_total=Decimal("35.1"), bank_deposit=500,
                    discrepancy_amount=Decimal("2.5"), discrepancy_type="short", closing_balance=Decimal("47.4"))
-    line(first, 2, "Blank", 10, "No description", account_id=uuid.uuid4(), contact_id=uuid.uuid4(),
+    line(first, 2, "Blank", 10, "No description", account_id=None, contact_id=None,
          published_account_code="400", published_account_name="Advertising",
          published_contact_name="Old Supplier")
     line(first, 1, "Tape", "25.10", "Tape, the wide roll", account_id=tape.id, contact_id=abc.id)
